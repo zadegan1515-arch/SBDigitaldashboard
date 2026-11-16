@@ -131,7 +131,7 @@ t('the list: people with no email, old enough, with a name to look up', () => {
   assert.deepEqual(r.need.map(x => x.group), ['noaccept', 'quiet', 'noaccept', 'quiet'])
   assert.deepEqual([r.need[0].first, r.need[0].last, r.need[0].brandName], ['Ann', 'Lee', 'Alpha'])
   assert.deepEqual(r.have.map(x => [x.contactId, x.email]), [['a3', 'cy@alpha.com']])
-  assert.deepEqual(r.counts, { need: 4, needBrands: 2, noaccept: 2, quiet: 2, fresh: 0, have: 1, emailed: 1, tooNew: 1, noName: 1, offBrands: 1, waitingBrands: 1 })
+  assert.deepEqual(r.counts, { need: 4, needBrands: 2, noaccept: 2, quiet: 2, working: 0, fresh: 0, held: 0, have: 1, emailed: 1, tooNew: 1, noName: 1, offBrands: 1, waitingBrands: 1 })
   assert.equal(FIND_MIN_DAYS, 21)
 })
 t('the wait is the caller\'s: any time lets a fresh invite in', () => {
@@ -142,6 +142,7 @@ t('the wait is the caller\'s: any time lets a fresh invite in', () => {
 })
 
 // ---- every brand in one place
+const FP = (id, name, extra = {}) => ({ contactId: id, name, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id, email: null, rank: 3, ...extra })
 t('each reached brand stands in exactly one place', () => {
   const old = ago(30), young = ago(3)
   const P2 = (id, extra = {}) => ({ contactId: id, name: 'Pat ' + id.toUpperCase() + 'son', title: 'VP', email: null, stage: 'reached', lastAt: old, ...extra })
@@ -161,6 +162,34 @@ t('each reached brand stands in exactly one place', () => {
   // The wait off: the young invite's brand has someone to look up.
   assert.equal(needEmailList([BR('young', [P2('ca', { lastAt: young })])], { now: NOW, minDays: 0 }).spots.young, 'list')
 })
+t('every brand on the file: a brand on Zach\'s list gives its people too, as their own group', () => {
+  const old = ago(30), young = ago(3)
+  const zach = { id: 'z', name: 'Zach Co', category: 'energy', stage: 'accepted', people: [
+    { contactId: 'acc', name: 'Ada Accepted', stage: 'accepted', lastAt: old },
+    { contactId: 'inv', name: 'Ian Invited', stage: 'reached', lastAt: old },
+    { contactId: 'new', name: 'Nia New', stage: 'reached', lastAt: young },
+    { contactId: 'has', name: 'Hal Has', stage: 'accepted', email: 'hal@zach.co', lastAt: old },
+    { contactId: 'mailed', name: 'Max Mailed', stage: 'accepted', email: 'max@zach.co', emailedAt: old, lastAt: old },
+  ] }
+  // As it was: the brand waits.
+  const off = needEmailList([zach], { now: NOW })
+  assert.deepEqual([off.need.length, off.have.length, off.spots.z], [0, 0, 'waiting'])
+  const on = needEmailList([zach], { now: NOW, working: true })
+  assert.deepEqual(on.need.map(x => [x.contactId, x.group]), [['acc', 'working'], ['inv', 'working']])
+  assert.deepEqual(on.have.map(x => [x.contactId, x.group]), [['has', 'working']])
+  assert.deepEqual([on.counts.working, on.counts.tooNew, on.counts.emailed, on.counts.waitingBrands, on.spots.z], [2, 1, 1, 1, 'list'])
+  // The wait still holds a young invite back; with none, it's on.
+  assert.deepEqual(needEmailList([zach], { now: NOW, working: true, minDays: 0 }).need.map(x => x.contactId), ['acc', 'inv', 'new'])
+  // A brand that answered never comes back this way.
+  const said = { ...zach, id: 'n', people: [...zach.people, { contactId: 'no', name: 'Ned No', stage: 'out', out: 'no' }] }
+  assert.deepEqual([needEmailList([said], { now: NOW, working: true }).need.length, needEmailList([said], { now: NOW, working: true }).spots.n], [0, 'talking'])
+  assert.equal(GROUP_WORDS.working, 'Someone accepted — on Zach’s list')
+})
+t('a brand the queue holds back is listed like any not reached yet, under its own group', () => {
+  const r = freshList([{ id: 'g', name: 'Giant Co', group: 'held', people: [FP('p', 'Pat Partner'), FP('h', 'Hana Has', { email: 'hana@giant.co' })] }, { id: 'f', name: 'Fresh Co', people: [FP('q', 'Quin Fresh')] }])
+  assert.deepEqual(r.need.map(x => [x.contactId, x.group]), [['p', 'held'], ['q', 'fresh']])
+  assert.deepEqual(r.have.map(x => [x.contactId, x.group]), [['h', 'held']])
+})
 t('the tally: brands per category and place', () => {
   const t1 = tallySpots([{ category: 'energy', spot: 'list' }, { category: 'energy', spot: 'list' }, { category: 'energy', spot: 'held' }, { category: null, spot: 'off' }, { category: 'spirits', spot: 'nobody' }])
   assert.deepEqual(t1, { energy: { list: 2, held: 1 }, '': { off: 1 }, spirits: { nobody: 1 } })
@@ -169,7 +198,6 @@ t('the tally: brands per category and place', () => {
 })
 
 // ---- brands not reached out to yet
-const FP = (id, name, extra = {}) => ({ contactId: id, name, title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/' + id, email: null, rank: 3, ...extra })
 t('a brand not reached yet gives its best three: the ones with an email are ready, the rest go to Hunter', () => {
   assert.equal(FRESH_PER_BRAND, 3)
   assert.equal(GROUP_WORDS.fresh, 'Not reached out to yet')
@@ -241,15 +269,17 @@ t('the file for Hunter: its columns, quotes kept, our id last', () => {
     brandId: 'b1', brandName: 'Alpha, Inc.', category: null, group: 'noaccept', lastAt: null, by: 'zach', company: 'Alpha, Inc.', domain: 'alpha.com' }])
   const grid = parseCsv(csv)
   assert.deepEqual(grid[0], HUNTER_HEAD)
-  assert.deepEqual(grid[1], ['Ann', 'Lee', 'Alpha, Inc.', 'alpha.com', 'Alpha, Inc.', '', 'VP, "Brand"', 'https://www.linkedin.com/in/ann-lee/', 'c1'])
+  assert.deepEqual(grid[1], ['Ann', 'Lee', 'Alpha, Inc.', 'alpha.com', 'Alpha, Inc.', '', 'Didn’t accept', 'VP, "Brand"', 'https://www.linkedin.com/in/ann-lee/', 'c1'])
   // The category goes in by its name, so the list stays split by category in Hunter.
-  const named = parseCsv(hunterCsv([{ contactId: 'c1', first: 'Ann', last: 'Lee', brandName: 'Alpha', category: 'energy', company: 'Alpha', domain: null }], k => (k === 'energy' ? 'Energy Drinks' : '')))
+  const named = parseCsv(hunterCsv([{ contactId: 'c1', first: 'Ann', last: 'Lee', brandName: 'Alpha', category: 'energy', group: 'held', company: 'Alpha', domain: null }], k => (k === 'energy' ? 'Energy Drinks' : '')))
   assert.deepEqual([named[0][5], named[1][5]], ['SB category', 'Energy Drinks'])
+  // …and why they're on it.
+  assert.deepEqual([named[0][6], named[1][6]], ['SB status', 'Not reached out to yet — held back by the queue'])
   assert.deepEqual(parseCsv('﻿a,b\r\n"x\ny",2\r\n\r\n'), [['a', 'b'], ['x\ny', '2']])
   assert.equal(toCsv([['a', 'b,c']]), 'a,"b,c"\r\n')
 })
 const FILE = (rows, head = [...HUNTER_HEAD, 'Email address', 'Confidence score', 'Verification status']) => toCsv([head, ...rows])
-const row = (id, email, status = 'valid', score = '95', first = 'Ann', last = 'Lee', brand = 'Alpha') => [first, last, brand, 'alpha.com', brand, 'Energy Drinks', 'VP', '', id, email, score, status]
+const row = (id, email, status = 'valid', score = '95', first = 'Ann', last = 'Lee', brand = 'Alpha') => [first, last, brand, 'alpha.com', brand, 'Energy Drinks', 'Didn’t accept', 'VP', '', id, email, score, status]
 t('Hunter\'s file: the address column is found by what\'s in it; rows with nothing are counted', () => {
   const f = readFoundFile(FILE([row('c1', 'Ann.Lee@Alpha.com'), row('c2', ''), row('c3', 'bo@alpha.com', 'accept_all', '70')]))
   assert.equal(f.error, undefined)
@@ -262,9 +292,17 @@ t('Hunter\'s file: the address column is found by what\'s in it; rows with nothi
   assert.deepEqual(g.cols, { email: 'Work Email', status: 'Email Status', score: null, id: null })
   assert.deepEqual([g.rows[0].name, g.rows[0].company, g.rows[0].email], ['Ann Lee', 'Alpha', 'ann@alpha.com'])
 })
+t('our own "SB status" column is never read as Hunter\'s verdict', () => {
+  // Hunter's column is called just "Status" here, and ours comes first.
+  const f = readFoundFile(toCsv([[...HUNTER_HEAD, 'Email', 'Status', 'Score'], ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'Didn’t accept', 'VP', '', 'c1', 'ann@alpha.com', 'valid', '91']]))
+  assert.deepEqual(f.cols, { email: 'Email', status: 'Status', score: 'Score', id: 'SB id' })
+  assert.deepEqual([f.rows[0].status, f.rows[0].score], ['valid', 91])
+  // No verdict column at all: ours still isn't one.
+  assert.equal(readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', '', 'Alpha', '', 'Didn’t accept', 'VP', '', 'c1', 'ann@alpha.com']])).cols.status, null)
+})
 t('the wrong file says so', () => {
   assert.match(readFoundFile(hunterCsv([])).error, /no rows/)
-  assert.match(readFoundFile(toCsv([HUNTER_HEAD, ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'VP', '', 'c1']])).error, /No email addresses/)
+  assert.match(readFoundFile(toCsv([HUNTER_HEAD, ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'Didn’t accept', 'VP', '', 'c1']])).error, /No email addresses/)
 })
 t('verified or not', () => {
   assert.equal(verdictOf('valid', true), 'valid')
@@ -319,7 +357,7 @@ t('a file fills empty emails only, and says why for every other line', () => {
   assert.equal(sigOf(['b', 'a']), sigOf(['a', 'b']))
 })
 t('a file with no verification column: saved lines are ticked, and say so', () => {
-  const file = readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'VP', '', 'c1', 'ann@alpha.com']]))
+  const file = readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'Didn’t accept', 'VP', '', 'c1', 'ann@alpha.com']]))
   const plan = planFoundEmails(file, { contacts: new Map([C('c1')]) })
   assert.deepEqual([plan.lines[0].action, plan.lines[0].tick, plan.lines[0].verdict], ['save', true, 'unknown'])
   assert.match(plan.lines[0].why, /doesn’t say/)

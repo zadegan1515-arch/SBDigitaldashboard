@@ -3046,10 +3046,12 @@ function supplyStateOf(b: PlanBrand, f: FitResult, q: QueueCtx): { state: Supply
 //           read (outreachTracker), so the two never disagree;
 //   fresh = brands not reached out to yet: never invited or emailed, not on
 //           the tracker (so not in talks), no deal / show / activation / Show
-//           Board request, and nothing the queue's own picks set aside or hold
-//           back (supplyStateOf — archived, do-not-email, stopped, not US,
-//           closed; a held giant, a Skip category, too small). Best Brand Fit
-//           first; at each, its best `perBrand` people (0 = everyone).
+//           Board request, and not set aside (supplyStateOf — archived,
+//           do-not-email, stopped, not US, closed). Best Brand Fit first; at
+//           each, its best `perBrand` people (0 = everyone). The ones the
+//           queue's rules hold back (a giant, a Skip category, too small) are
+//           on it too since "i want every brand on the file", as group 'held';
+//           so are the brands on Zach's list (the list's group 'working').
 // coOf = what Hunter looks a brand's people up under: the domain its people
 // already mail from, else its website; a label under a parent company with
 // neither goes by the parent's name (its people mail from there).
@@ -3064,7 +3066,7 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
     prisma.showSponsor.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
     prisma.boardAccessRequest.findMany({ where: { brandId: { not: null } }, select: { brandId: true }, distinct: ['brandId'] }),
   ])
-  const list = needEmailList(tr.brands, { minDays: opts.minDays, now })
+  const list = needEmailList(tr.brands, { minDays: opts.minDays, now, working: true })
   const tracked = new Set<string>((tr.brands as any[]).map(b => b.id))
   const known = new Set<string>([...deals, ...acts, ...sponsors, ...asked].map(x => x.brandId as string))
   const held: Record<Hold, number> = { giant: 0, skip: 0, small: 0 }
@@ -3080,11 +3082,12 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
     const { state, holds } = supplyStateOf(b, fit, ctx.q)
     if (state === 'off' || state === 'reached') { spotOf.set(b.id, state === 'off' ? 'off' : 'other'); continue }
     if (known.has(b.id)) { dealBrands += 1; spotOf.set(b.id, 'known'); continue }
-    if (state === 'held') { heldBrands += 1; for (const h of holds) held[h] += 1; spotOf.set(b.id, 'held'); continue }
+    // Held back by the queue's rules (a giant, a Skip category, too small): on the list all the same, as its own group.
+    if (state === 'held') { heldBrands += 1; for (const h of holds) held[h] += 1 }
     const names = brandNames(b)
     const isAbroad = abroadTest(b, names)
     freshBrands.push({
-      id: b.id, name: b.name, category: b.category, fit: fit.score,
+      id: b.id, name: b.name, category: b.category, fit: fit.score, group: state === 'held' ? 'held' : 'fresh',
       people: b.contacts.map(c => ({
         contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, email: c.email,
         stopped: !!c.doNotContactAt, decisionMaker: !!c.isDecisionMaker, rank: buyerRank(c.title),
@@ -15994,7 +15997,16 @@ const handlers: Record<string, Handler> = {
   async sendToInstantly({ ids, confirm = false, expect, perBrand, __user, __key }: any = {}) {
     // The same list the card above shows (`perBrand` = its "people a brand" for brands not reached yet).
     const list: any = await handlers.noAnswerList({ minDays: 0, perBrand })
-    const ready: Array<HunterRow & { contactId: string }> = list.ready
+    // The card's list is wider than who may be handed over (find-emails.ts
+    // groups, since "i want every brand on the file"):
+    //   'working' — a brand where someone accepted and is still on Zach's
+    //   list — never goes: that's a live LinkedIn conversation (the email
+    //   machine skips those brands too);
+    //   'held' — not reached yet and held back by the queue's rules — goes
+    //   as any brand not reached yet does: unticked, Leo's call.
+    const ready: Array<HunterRow & { contactId: string }> = (list.ready as Array<HunterRow & { contactId: string }>)
+      .filter(r => r.group !== 'working')
+      .map(r => (r.group === 'held' ? { ...r, group: 'fresh' as const } : r))
     const cids = ready.map(r => r.contactId)
     const [contacts, stops, chosen] = await Promise.all([
       prisma.contact.findMany({

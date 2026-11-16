@@ -125,11 +125,13 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     let l = await data('noAnswerList')
     const ids = (rows) => rows.map(r => r.contactId).sort()
     // No Co (Nat said no) and Mixed Co (Max asked us to stop): their never-accepted colleagues stay off the list too.
-    assert.deepEqual(ids(l.people), ['c_ann', 'c_bo', 'c_kay', 'c_qi', 'c_sam', 'c_wd'])
+    // Waiting Co — someone accepted and is on Zach's list — is on it too ("i want every brand on the file"), as its own group.
+    assert.deepEqual(ids(l.people), ['c_ann', 'c_bo', 'c_kay', 'c_qi', 'c_sam', 'c_wa', 'c_wb', 'c_wd'])
     assert.deepEqual(ids(l.ready), ['c_has', 'c_kim'])
     assert.equal(l.minDays, 21)
-    assert.equal(l.counts.need, 6); assert.equal(l.counts.needBrands, 4)
-    assert.equal(l.counts.noaccept, 5); assert.equal(l.counts.quiet, 1)
+    assert.equal(l.counts.need, 8); assert.equal(l.counts.needBrands, 5)
+    assert.equal(l.counts.noaccept, 5); assert.equal(l.counts.quiet, 1); assert.equal(l.counts.working, 2)
+    assert.deepEqual(l.people.filter(p => p.group === 'working').map(p => p.contactId).sort(), ['c_wa', 'c_wb'])
     assert.equal(l.counts.have, 2); assert.equal(l.counts.tooNew, 1); assert.equal(l.counts.noName, 1)
     assert.equal(l.counts.waitingBrands, 1)
     assert.equal(l.counts.offBrands, 2, 'Archived Co and Quiet Please Co (Stop Co said no more — never offered)')
@@ -137,7 +139,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const by = (id) => l.people.find(p => p.contactId === id) || l.ready.find(p => p.contactId === id)
     assert.deepEqual([by('c_bo').first, by('c_bo').last], ['Bo', 'Chen'])
     assert.equal(by('c_qi').group, 'quiet'); assert.equal(by('c_ann').group, 'noaccept')
-    for (const id of ['c_n2', 'c_m2', 'c_r2', 'c_wb', 'c_s1', 'c_a1', 'c_d1', 'c_q', 'c_new', 'c_cut'])
+    for (const id of ['c_n2', 'c_m2', 'c_r2', 'c_s1', 'c_a1', 'c_d1', 'c_q', 'c_new', 'c_cut'])
       assert.equal(l.people.some(p => p.contactId === id) || l.ready.some(p => p.contactId === id), false, id + ' is not on the list')
     ok('the list: invited 21+ days ago with no accept (or withdrawn), or accepted and gone quiet — at brands nobody answered from');
 
@@ -149,7 +151,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('where Hunter looks: the domain its people mail from, else the website; a label with neither goes by its parent');
 
     l = await data('noAnswerList', { minDays: 0 })
-    assert.deepEqual(ids(l.people), ['c_ann', 'c_bo', 'c_kay', 'c_new', 'c_qi', 'c_sam', 'c_wd'])
+    assert.deepEqual(ids(l.people), ['c_ann', 'c_bo', 'c_kay', 'c_new', 'c_qi', 'c_sam', 'c_wa', 'c_wb', 'c_wd'])
     assert.equal(l.counts.tooNew, 0)
     ok('any time lets the fresh invite in');
 
@@ -216,7 +218,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('Save fills only the ticked people’s empty email fields, with a note, and Claude’s day words it');
 
     l = await data('noAnswerList')
-    assert.deepEqual(ids(l.people), ['c_kay', 'c_sam', 'c_wd'])
+    assert.deepEqual(ids(l.people), ['c_kay', 'c_sam', 'c_wa', 'c_wb', 'c_wd'])
     assert.deepEqual(ids(l.ready), ['c_ann', 'c_bo', 'c_has', 'c_kim', 'c_qi'])
     assert.equal(l.last.count, 2); assert.equal(l.last.by, 'Claude')
     // The same file again: nothing left to save for them.
@@ -312,14 +314,16 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // Nova Pouch's best three: the two partnerships people (one has an email → ready) and events; Lone Co's only door.
     assert.deepEqual(fresh(fl.people), ['f_e', 'f_lone', 'f_p'])
     assert.deepEqual(fresh(fl.ready), ['f_has'])
-    assert.deepEqual([fl.counts.fresh, fl.counts.freshBrands, fl.counts.freshHave, fl.counts.freshMore, fl.counts.freshNoName], [3, 2, 1, 2, 2])
+    // The brands the queue holds back — a giant, a Skip category — are on it as well, under their own group.
+    assert.deepEqual(fl.people.filter(p => p.group === 'held').map(p => [p.contactId, p.brandName]).sort(), [['f_b', 'Bet Co'], ['f_g', 'Red Bull']])
+    assert.deepEqual([fl.counts.fresh, fl.counts.freshBrands, fl.counts.freshHave, fl.counts.freshMore, fl.counts.freshNoName], [5, 4, 1, 2, 2])
     assert.deepEqual([fl.counts.heldBrands, fl.counts.held.giant, fl.counts.held.skip, fl.counts.dealBrands, fl.counts.nobodyBrands], [2, 1, 1, 1, 2])
     assert.equal(fl.counts.need, fl.people.length); assert.equal(fl.counts.have, fl.ready.length)
     const fp = fl.people.find(p => p.contactId === 'f_p')
     assert.deepEqual([fp.first, fp.last, fp.company, fp.domain, fp.brandName, fp.lastAt], ['Pat', 'Partner', 'Nova Pouch', 'novapouch.com', 'Nova Pouch', null])
     // The people who didn't answer are still there, first.
     assert.equal(fl.people[0].group !== 'fresh', true)
-    assert.equal(fl.people.filter(p => p.group !== 'fresh').length, before.people.length)
+    assert.equal(fl.people.filter(p => p.group !== 'fresh' && p.group !== 'held').length, before.people.length)
     assert.deepEqual(fl.domains.map(d => [d.brandName, d.domain, d.category]).sort(), [['Bare Bars', null, 'wellness'], ['Zest Soda', 'zestsoda.com', 'beverage']])
     // Every brand stands in exactly one place, per category — and they add up to every brand (the person aside).
     const sum = (t) => Object.values(t).reduce((n, by) => n + Object.values(by).reduce((a, b) => a + b, 0), 0)
@@ -328,17 +332,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(fl.tally.nicotine, { list: 1 }, 'Nova Pouch')
     assert.deepEqual(fl.tally.beverage, { nobody: 1 }, 'Zest Soda')
     assert.deepEqual(fl.tally.wellness, { nobody: 1 }, 'Bare Bars')
-    assert.deepEqual(fl.tally.betting, { held: 1 }, 'Bet Co')
+    assert.deepEqual(fl.tally.betting, { list: 1 }, 'Bet Co — held back by the queue, on the file all the same')
     // energy: every brand seeded without a category of its own.
     const en = fl.tally.energy
-    assert.deepEqual([en.held, en.known, en.waiting], [1, 1, 1], 'Red Bull · Deal Co · Waiting Co')
+    assert.deepEqual([en.held, en.known, en.waiting], [undefined, 1, undefined], 'Deal Co stays out; Red Bull and Waiting Co are on the file now')
     assert.equal(en.talking, 4, 'Reply Co, No Co, Mixed Co, and Stop Co (asked us to stop)')
     assert.equal(en.off, 4, 'Archived Co, Quiet Please Co, Abroad Only Co, Shelved Co')
-    assert.equal(en.list >= 4, true, 'Cold Co, Smirnoff, Quiet Co, Lone Co…')
+    assert.equal(en.list >= 6, true, 'Cold Co, Smirnoff, Quiet Co, Lone Co, Waiting Co, Red Bull…')
     for (const p of fl.people.concat(fl.ready)) assert.equal(typeof p.category, 'string', p.contactId + ' carries its category')
-    for (const id of ['f_s', 'f_uk', 'f_cut', 'f_stop', 'f_g', 'f_b', 'f_n', 'f_d', 'f_a', 'f_lm', 'f_m', 'f_c'])
+    for (const id of ['f_s', 'f_uk', 'f_cut', 'f_stop', 'f_n', 'f_d', 'f_a', 'f_lm', 'f_m', 'f_c'])
       assert.equal(fl.people.some(p => p.contactId === id) || fl.ready.some(p => p.contactId === id), false, id + ' is not on the list')
-    ok('brands not reached yet: their best three people each — never a held giant, a Skip category, a deal, not-US or archived');
+    ok('brands not reached yet: their best three people each, held-back ones too — never a deal, not-US, archived or stopped');
 
     fl = await data('noAnswerList', { perBrand: 0 })
     assert.deepEqual(fresh(fl.people), ['f_c', 'f_e', 'f_lone', 'f_m', 'f_p'])
