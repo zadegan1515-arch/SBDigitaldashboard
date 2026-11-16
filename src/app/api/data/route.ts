@@ -35,6 +35,10 @@ import {
   sendingPaused, setSendingPaused,
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail, sendPlainEmail,
 } from '@/lib/email'
+import { CATEGORY_ANGLES, DEFAULT_ANGLE } from '@/lib/email'
+import {
+  EMAIL_TEMPLATES_KEY, GENERAL_KEYS, GENERAL_LABELS, catKey, isTemplateKey, parseOwn, templateRow, ownFromSave,
+} from '@/lib/email-templates'
 import { syncNotionDeals } from '@/lib/notion'
 import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect, opsSend } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
@@ -54,7 +58,7 @@ import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, L
 import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, linkedinSlug, type PersonRow, type MergeFields } from '@/lib/same-person'
 import {
   needEmailList, freshList, tallySpots, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
-  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
+  cleanEmail as cleanFoundEmail, sigOf as findSig, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import {
   planPush, leadFor, campaignView, batchId, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
@@ -65,9 +69,12 @@ import { instantlyKeySet, listCampaigns as instantlyCampaigns, listWebhooks as i
 import {
   hookInfo, lastPush, pushLeads, syncInstantly, pullBack as instantlyPullBack, undoPush as instantlyUndoPush, setHook as instantlySetHook,
   readJson as readInstantlyJson, writeJson as writeInstantlyJson,
-  groupCampaigns, templatesState, saveTemplate as saveColdTemplate, pushTemplate as pushColdTemplate, pullTemplate as pullColdTemplate, linkCampaign as linkColdCampaign,
+  groupCampaigns, templatesNow, sequenceFor, saveFooter, pushTemplate as pushColdTemplate, pullTemplate as pullColdTemplate, linkCampaign as linkColdCampaign,
 } from '@/lib/instantly-db'
-import { TEMPLATE_GROUPS, GENERAL as GENERAL_TEMPLATE, groupOfCategory, groupLabel as templateLabel, readTemplates, fromSequence, syncState as templateSync, hasBoard } from '@/lib/cold-templates'
+import {
+  FAMILIES, MAIN_KEYS, GENERAL as GENERAL_TEMPLATE, CATEGORY_LABELS, campaignKeyOf, waitsOn, keyLabel as templateLabel, firstKeyOf, isCampaignKey,
+  fromSequence, syncState as templateSync, hasBoard,
+} from '@/lib/cold-templates'
 import { personBoardLink } from '@/lib/board-key'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
@@ -2753,6 +2760,8 @@ let acceptRateMemo: { at: number; rates: AcceptRates } | null = null
 // brand-fit.ts). brandFit reads it from here synchronously; every fit
 // computation loads accept rates first, which refreshes this at most once a
 // minute, and setCategoryPriority updates it at once.
+// Email → Templates: each category's angle line ('' = no angle of its own).
+const TEMPLATE_ANGLES: Record<string, { insert: string }> = { ...CATEGORY_ANGLES, '': DEFAULT_ANGLE }
 const CATEGORY_PRIORITY_KEY = 'categoryPriority'
 let categoryPriorityMemo: { at: number; map: Record<string, string> } = { at: 0, map: {} }
 async function loadCategoryPriority(force = false): Promise<Record<string, string>> {
@@ -3125,6 +3134,7 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
   return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size }
 }
 
+const WEBSITES_LAST_KEY = 'brandWebsitesLast'
 const DEAD_WEIGHT_KEY = 'deadWeightLast'
 // Archive dead weight's list: brands in play (not archived, not do-not-email)
 // that can never go out (supply.ts deadWeightOf), worst first.
@@ -5866,6 +5876,53 @@ const handlers: Record<string, Handler> = {
     await writeJsonSetting(prisma, CATEGORY_PRIORITY_KEY, custom)
     categoryPriorityMemo = { at: Date.now(), map: custom }
     return { category: key, priority: priorityOf(key, custom) }
+  },
+
+  // ---- Email → Templates (Leo, Nov 16 2026; src/lib/email-templates.ts) ----
+  // The templates every category shares, then one first email per category
+  // (Top → Skip, the Schedule's order). Leo's own versions live in Setting
+  // `emailTemplates`; one without an entry follows its default. Read-only.
+  async listEmailTemplates() {
+    const [stored, custom, camps] = await Promise.all([
+      readJsonSetting<Record<string, any>>(prisma, EMAIL_TEMPLATES_KEY, {}),
+      loadCategoryPriority(true),
+      groupCampaigns(prisma),
+    ])
+    const own = parseOwn(stored)
+    // Where each template goes in Instantly (Email → Instantly,
+    // cold-templates.ts): the campaign it is the first email of, or — a
+    // category with no campaign of its own — whose email its brands get
+    // there; the two shared follow-ups are in every campaign.
+    const linked = Object.keys(camps).filter(isCampaignKey)
+    const has = (k: string) => !!camps[k]
+    const instantlyOf = (k: string) => {
+      if (k === 'followup' || k === 'final') return linked.length ? { campaigns: linked.length } : null
+      const key = k === 'intro' ? GENERAL_TEMPLATE : k.slice(4)
+      if (camps[key]) return { key, campaign: camps[key].name }
+      if (key === GENERAL_TEMPLATE) return null
+      const goes = campaignKeyOf(key, has) ?? waitsOn(key)
+      return goes === key ? null : { goesWith: goes, label: templateLabel(goes), has: has(goes) }
+    }
+    return {
+      general: GENERAL_KEYS.map(k => ({ ...templateRow(k, own, TEMPLATE_ANGLES), label: GENERAL_LABELS[k], instantly: instantlyOf(k) })),
+      categories: CATEGORY_KEYS.map(c => ({ ...templateRow(catKey(c), own, TEMPLATE_ANGLES), category: c, priority: priorityOf(c, custom), instantly: instantlyOf(catKey(c)) })),
+    }
+  },
+  // Save one template, or (reset) hand it back to its default. Text equal
+  // to the default is a reset too. One writer at a time.
+  async saveEmailTemplate({ key, subject, body, reset, __user }: any) {
+    const k = String(key ?? '')
+    if (!isTemplateKey(k)) throw new Error('Unknown template')
+    const next = reset ? null : ownFromSave(k, subject, body, TEMPLATE_ANGLES)
+    const own = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${EMAIL_TEMPLATES_KEY}))::text`
+      const cur = parseOwn(await readJsonSetting<Record<string, any>>(tx, EMAIL_TEMPLATES_KEY, {}))
+      if (next) cur[k] = { ...next, at: new Date().toISOString(), by: __user ?? null }
+      else delete cur[k]
+      await writeJsonSetting(tx, EMAIL_TEMPLATES_KEY, cur)
+      return cur
+    })
+    return templateRow(k, own, TEMPLATE_ANGLES)
   },
 
   // ---- Leo's picked ideas (Oct 6 2026) — src/lib/build-ideas.ts ----
@@ -15970,7 +16027,7 @@ const handlers: Record<string, Handler> = {
   async instantlyStatus({ live = false }: any = {}) {
     const connected = instantlyKeySet()
     const [groupMap, tplState, hook, sync, last, byState, rows, handed] = await Promise.all([
-      groupCampaigns(prisma), templatesState(prisma), hookInfo(prisma), readInstantlyJson<any>(prisma, INSTANTLY_SYNC_KEY, null), lastPush(prisma),
+      groupCampaigns(prisma), templatesNow(prisma), hookInfo(prisma), readInstantlyJson<any>(prisma, INSTANTLY_SYNC_KEY, null), lastPush(prisma),
       prisma.instantlyLead.groupBy({ by: ['state'], _count: { _all: true } }),
       prisma.instantlyLead.findMany({
         where: { state: { in: ['replied', 'bounced', 'unsubscribed', 'removed'] } },
@@ -16028,67 +16085,86 @@ const handlers: Record<string, Handler> = {
         }
       } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
     }
-    // Each template group: its emails on the dashboard, its Instantly
-    // campaign, and whether the two say the same thing.
-    const tpls = readTemplates(tplState)
-    const groups = tpls.groups.map(g => {
-      const linked = groupMap[g.key] ?? null
+    // Each campaign key (cold-templates.ts): Leo's picks always, then any
+    // other category given a campaign of its own — its three emails as
+    // Email → Templates has them, its Instantly campaign, and whether the two
+    // say the same thing.
+    const keys = [...MAIN_KEYS, ...CATEGORY_KEYS.filter(c => groupMap[c] && !MAIN_KEYS.includes(c))]
+    const groups = keys.map(key => {
+      const mine = sequenceFor(key, tplState.own)
+      const linked = groupMap[key] ?? null
       const found = raw && linked ? raw.find(c => c.id === linked.id) ?? null : null
-      const theirs = found ? fromSequence(found.sequences, tpls.signature) : null
-      const st = raw === null ? { state: linked ? 'unknown' : 'none', newer: null }
-        : templateSync({ mine: { subject: g.subject, steps: g.steps }, signature: tpls.signature, linked: !!linked, found: !!found, theirs, pushedSig: linked?.sig ?? null })
+      const theirs = found ? fromSequence(found.sequences, tplState.signature) : null
+      const st = raw === null ? { state: linked ? 'unknown' : 'none', newer: null, parts: null }
+        : templateSync({ mine, signature: tplState.signature, linked: !!linked, found: !!found, theirs, pushedSig: linked?.sig ?? null })
+      const fam = FAMILIES.find(f => f.key === key)
       return {
-        key: g.key, label: g.label, categories: g.categories, subject: g.subject, steps: g.steps, edited: g.edited, at: g.at, by: g.by,
-        hasBoard: hasBoard(g.steps[0]?.body ?? ''),
+        key, label: templateLabel(key), main: MAIN_KEYS.includes(key),
+        // Its first email on Email → Templates, and the categories that go with it for now.
+        first: firstKeyOf(key), also: fam ? fam.also.filter(c => !groupMap[c]) : [],
+        subject: mine.subject, own: !!tplState.own[firstKeyOf(key)], hasBoard: hasBoard(mine.steps[0]?.body ?? ''),
         linked: linked ? { id: linked.id, name: linked.name } : null,
         campaign: found ? campaignView(found) : null,
-        state: st.state, newer: st.newer, theirs: st.state === 'differs' ? theirs : null,
+        state: st.state, newer: st.newer, parts: st.parts,
       }
     })
+    // Every other category: where its people go until it has a campaign of its own.
+    const others = CATEGORY_KEYS.filter(c => !keys.includes(c)).map(c => ({ key: c, label: CATEGORY_LABELS[c] ?? c, goesWith: waitsOn(c) }))
     return {
       connected, keyName: INSTANTLY_KEY_ENV, scopes: INSTANTLY_SCOPES,
       campaigns: raw ? raw.map(campaignView) : null, error,
-      templates: { signature: tpls.signature, groups },
+      templates: { signature: tplState.signature, groups, others },
       counts, people: [...opened.slice(0, 80), ...people], hook: hookState, sync,
       last: last ? { at: last.at, by: last.by, count: last.count, campaignName: last.campaignName, waiting: waitingInLast } : null,
     }
   },
 
-  // A group's template (cold-templates.ts): saved on the dashboard, and —
-  // with `push` — written into that group's Instantly campaign (a new draft
-  // campaign the first time). `push: 'all'` = every group that has one (after
-  // a change to the signature). `reset` = back to the draft. Pushing is a
-  // signed-in person's: it changes what Instantly sends.
-  async saveInstantlyTemplate({ group, subject, steps, signature, reset = false, push = false, __user, __key }: any = {}) {
+  // A campaign key's emails (Email → Templates: its first email, then the
+  // Follow-up and Last follow-up every category shares) written into its
+  // Instantly campaign — a new draft campaign the first time. `all` = every
+  // key that has a campaign (after a change to the footer or to a shared
+  // follow-up). A signed-in person's only: it changes what Instantly sends.
+  async pushInstantlyTemplate({ key, all = false, __user, __key }: any = {}) {
+    if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can send a template to Instantly.')
+    const by = talksBy(__user)
+    const pushed: Array<{ group: string; label: string; created: boolean; campaign: { id: string; name: string } }> = []
+    if (all) {
+      const linked = await groupCampaigns(prisma)
+      for (const k of [...MAIN_KEYS, ...CATEGORY_KEYS]) if (linked[k] && !pushed.some(x => x.group === k)) pushed.push(await pushColdTemplate(prisma, k, by))
+    } else {
+      if (!isCampaignKey(key)) throw new Error('Which template?')
+      pushed.push(await pushColdTemplate(prisma, key, by))
+    }
+    return { pushed, label: all ? null : templateLabel(String(key)) }
+  },
+
+  // The other way: what a campaign says in Instantly taken as the
+  // dashboard's words on Email → Templates (its first email; a follow-up
+  // changed there becomes the shared one — `changed` names each template).
+  async pullInstantlyTemplate({ key, group, __user }: any = {}) {
+    return pullColdTemplate(prisma, key ?? group, talksBy(__user))
+  },
+
+  // The footer under every email in Instantly (a title, a mailing address).
+  // Saved on the dashboard; `push` (a signed-in person) writes it into every
+  // campaign too.
+  async saveInstantlyFooter({ signature, push = false, __user, __key }: any = {}) {
     const human = !!__user && __user !== 'CLI' && !__key
     if (push && !human) throw new Error('Only someone signed in to the dashboard can send a template to Instantly.')
-    const by = talksBy(__user)
-    const hasGroup = group !== undefined && group !== null && group !== ''
-    const editing = hasGroup && (reset || subject !== undefined || steps !== undefined)
-    const saved = editing || signature !== undefined
-      ? await saveColdTemplate(prisma, { group: editing ? group : undefined, template: { subject, steps }, signature, reset: !!reset, by })
-      : null
+    const saved = await saveFooter(prisma, signature)
     const pushed: Array<{ group: string; label: string; created: boolean; campaign: { id: string; name: string } }> = []
-    if (push === 'all') {
+    if (push) {
       const linked = await groupCampaigns(prisma)
-      for (const g of TEMPLATE_GROUPS) if (linked[g.key]) pushed.push(await pushColdTemplate(prisma, g.key, by))
-    } else if (push) {
-      if (!hasGroup) throw new Error('Which template?')
-      pushed.push(await pushColdTemplate(prisma, group, by))
+      for (const k of [...MAIN_KEYS, ...CATEGORY_KEYS]) if (linked[k] && !pushed.some(x => x.group === k)) pushed.push(await pushColdTemplate(prisma, k, talksBy(__user)))
     }
-    return { saved, pushed, label: hasGroup ? templateLabel(String(group)) : null }
+    return { signature: saved.signature, pushed }
   },
 
-  // Instantly's emails for a group taken as the dashboard's template.
-  async pullInstantlyTemplate({ group, __user }: any = {}) {
-    return pullColdTemplate(prisma, group, talksBy(__user))
-  },
-
-  // A campaign made in Instantly by hand, given to a template group (the
-  // people whose brands get that template go to it); '' takes it off.
+  // A campaign made in Instantly by hand, given to a campaign key (the
+  // people whose brands go with that key are sent to it); '' takes it off.
   // Checked with Instantly first.
-  async setInstantlyCampaign({ campaignId, group, __user }: any) {
-    const r = await linkColdCampaign(prisma, group || GENERAL_TEMPLATE, String(campaignId || '').trim(), talksBy(__user))
+  async setInstantlyCampaign({ campaignId, group, key, __user }: any) {
+    const r = await linkColdCampaign(prisma, key || group || GENERAL_TEMPLATE, String(campaignId || '').trim(), talksBy(__user))
     return { group: r.group, label: r.label, campaign: r.campaign ? campaignView(r.campaign) : null }
   },
 
@@ -16096,8 +16172,9 @@ const handlers: Record<string, Handler> = {
   // with where their address came from, ticked or not (rule 6) — the ready
   // list of the Hunter card (an email on file, never emailed, at a brand
   // nobody answered from or one not reached yet — those start unticked),
-  // less anyone stopped. Each goes to the campaign of their brand's template
-  // (cold-templates.ts groupOfCategory); a group with no campaign yet can't
+  // less anyone stopped. Each goes to the campaign their brand's category
+  // sends through (cold-templates.ts campaignKeyOf: its own, its family's,
+  // or the general one); someone with no campaign to go to yet can't
   // go. confirm + the ticked people (contact ids) + the preview's `expect`
   // (changed since → stale) sends them; someone with no outreach row yet gets
   // one first, next in line, so the LinkedIn queue's numbers don't move, and
@@ -16137,10 +16214,8 @@ const handlers: Record<string, Handler> = {
     if (instantlyKeySet() && Object.keys(groupMap).length) {
       try { live = new Map((await instantlyCampaigns()).map(c => [c.id, campaignView(c)])) } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
     }
-    const campOf = (tpl: string): string | null => {
-      const g = groupMap[tpl]
-      return g && (!live || live.has(g.id)) ? g.id : null
-    }
+    // A key has a campaign when one is linked and (as far as Instantly says) still there.
+    const hasCamp = (k: string) => { const g = groupMap[k]; return !!g && (!live || live.has(g.id)) }
     const byId = new Map(contacts.map(c => [c.id, c]))
     const people: PushPerson[] = []
     const rowBy = new Map<string, HunterRow & { contactId: string }>()
@@ -16153,26 +16228,35 @@ const handlers: Record<string, Handler> = {
       const stopped = c.brand.stoppedAt ? stopWords({ at: c.brand.stoppedAt }, c.brand.name)
         : c.doNotContactAt || t?.handDeclinedAt ? stopWords({ name: c.name, at: c.doNotContactAt ?? t?.handDeclinedAt })
         : hit ? stopWords({ name: hit.name, at: hit.at }) : null
-      const tpl = groupOfCategory(c.brand.category)
+      // Where they'd go — or, with nowhere to go yet, the campaign they wait for.
+      const goes = campaignKeyOf(c.brand.category, hasCamp)
+      const tpl = goes ?? waitsOn(c.brand.category)
       people.push({
         targetId: t?.id ?? null, contactId: c.id, name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, linkedinUrl: c.linkedinUrl,
         notes: c.notes, brandId: c.brandId, brandName: c.brand.name, website: c.brand.website, domain: r.domain, group: r.group,
-        handed: !!t?.instantly, stopped, tpl, tplLabel: templateLabel(tpl), campaignId: campOf(tpl),
+        handed: !!t?.instantly, stopped, tpl, tplLabel: templateLabel(tpl), campaignId: goes ? groupMap[goes].id : null,
       })
     }
     const plan = planPush(people)
     // Per template: its campaign, whether it's running, how many could go.
-    const campaigns = TEMPLATE_GROUPS.map(g => {
-      const mine = plan.lines.filter(l => l.tpl === g.key && (l.action === 'send' || l.action === 'nocamp'))
-      const linked = groupMap[g.key]
+    const campaigns = [...MAIN_KEYS, ...CATEGORY_KEYS.filter(c => !MAIN_KEYS.includes(c))].map(k => {
+      const mine = plan.lines.filter(l => l.tpl === k && (l.action === 'send' || l.action === 'nocamp'))
+      const linked = groupMap[k]
       const view = linked && live ? live.get(linked.id) ?? null : null
       return {
-        group: g.key, label: g.label, people: mine.length, canGo: mine.filter(l => l.action === 'send').length,
-        id: linked && campOf(g.key) ? linked.id : null, name: view?.name ?? linked?.name ?? null,
+        group: k, label: templateLabel(k), people: mine.length, canGo: mine.filter(l => l.action === 'send').length,
+        id: linked && hasCamp(k) ? linked.id : null, name: view?.name ?? linked?.name ?? null,
         statusWord: view?.statusWord ?? null, sends: view?.sends ?? false,
       }
     }).filter(c => c.people > 0)
-    const summary = { lines: plan.lines, counts: plan.counts, expect: plan.sig, campaigns, connected: instantlyKeySet(), error }
+    // How many people each category has ready (for "give it its own campaign").
+    const byCategory: Record<string, number> = {}
+    for (const p of people) {
+      if (p.handed || p.stopped) continue
+      const cat = String(byId.get(p.contactId)?.brand.category ?? '')
+      if (cat) byCategory[cat] = (byCategory[cat] ?? 0) + 1
+    }
+    const summary = { lines: plan.lines, counts: plan.counts, expect: plan.sig, campaigns, byCategory, connected: instantlyKeySet(), error }
     if (!confirm) return { preview: true, ...summary }
     if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can send people to Instantly — open Outreach → Instantly and press Send there.')
     if (!instantlyKeySet()) throw new Error('Instantly isn’t connected yet — ' + INSTANTLY_KEY_ENV + ' isn’t set in Vercel')
@@ -16268,6 +16352,74 @@ const handlers: Record<string, Handler> = {
     const secret = randomBytes(32).toString('hex')
     const r = await instantlySetHook(prisma, !!on, url, secret)
     return { on: r.on }
+  },
+
+  // ── Websites, filled in bulk (Leo, Nov 16 2026: "lets do the domain search") ──
+  // Hunter's Domain Search needs a company's website, and most brands had none
+  // saved. rows = [{ brandId, website }] (a Claude session's web research, or a
+  // list typed by hand). Without confirm it only shows what would be saved,
+  // brand by brand (rule 6): only a brand whose website is still empty — never
+  // over one already there, never a social / marketplace link, never a brand
+  // that isn't on file. confirm + the preview's `expect` fills them in one
+  // transaction; Undo = undoBrandWebsites (the last list; a website changed
+  // since stays).
+  async saveBrandWebsites({ rows, confirm = false, expect, __user }: any = {}) {
+    const list = (Array.isArray(rows) ? rows : []).slice(0, 2000)
+    const ids = [...new Set(list.map((r: any) => String(r?.brandId ?? '')).filter(Boolean))]
+    const brands = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, website: true } }) : []
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const NOT_A_SITE = /(^|\.)(instagram|facebook|tiktok|linkedin|twitter|x|youtube|amazon|linktr|wikipedia|crunchbase|shopify|myshopify|google)\.(com|ee|org)$/
+    const seen = new Set<string>()
+    const lines: Array<{ brandId: string; name: string; website: string; action: 'save' | 'has' | 'bad' | 'unknown' | 'twice'; why: string }> = []
+    for (const r of list) {
+      const id = String(r?.brandId ?? '')
+      const b = byId.get(id)
+      const domain = websiteDomain(String(r?.website ?? ''))
+      const base = { brandId: id, name: b?.name ?? String(r?.name ?? ''), website: domain ? 'https://' + domain : String(r?.website ?? '') }
+      if (!b) { lines.push({ ...base, action: 'unknown', why: 'Not a brand on the dashboard' }); continue }
+      if (seen.has(id)) { lines.push({ ...base, action: 'twice', why: 'In the list twice — the first is used' }); continue }
+      seen.add(id)
+      if (!domain || NOT_A_SITE.test(domain)) { lines.push({ ...base, action: 'bad', why: 'Not a company website' }); continue }
+      if (b.website && b.website.trim()) { lines.push({ ...base, action: 'has', why: 'Already has ' + b.website.trim() + ' — left as it is' }); continue }
+      lines.push({ ...base, action: 'save', why: '' })
+    }
+    const todo = lines.filter(l => l.action === 'save')
+    const sig = findSig(todo.map(l => l.brandId + ':' + l.website))
+    const counts = { save: todo.length, has: lines.filter(l => l.action === 'has').length, bad: lines.filter(l => l.action === 'bad').length, unknown: lines.filter(l => l.action === 'unknown').length, twice: lines.filter(l => l.action === 'twice').length }
+    if (!confirm) return { preview: true, lines, counts, expect: sig }
+    if (String(expect || '') !== sig) return { applied: false, stale: true, lines, counts, expect: sig }
+    if (!todo.length) throw new Error('Nothing to save — every brand on the list already has a website')
+    const now = new Date()
+    const saved: Array<{ brandId: string; name: string; website: string }> = []
+    await prisma.$transaction(async tx => {
+      for (const l of todo) {
+        // Only while it's still empty: a website typed in since stays.
+        const r = await tx.brand.updateMany({ where: { id: l.brandId, OR: [{ website: null }, { website: '' }] }, data: { website: l.website } })
+        if (r.count) saved.push({ brandId: l.brandId, name: l.name, website: l.website })
+      }
+      if (saved.length) {
+        const value = JSON.stringify({ at: now.toISOString(), by: talksBy(__user), rows: saved })
+        await tx.setting.upsert({ where: { key: WEBSITES_LAST_KEY }, create: { key: WEBSITES_LAST_KEY, value }, update: { value } })
+      }
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, saved: saved.length, skipped: todo.length - saved.length, counts }
+  },
+  async undoBrandWebsites({ confirm = false }: any = {}) {
+    const last = await readJsonSetting<{ at: string; by: string | null; rows: Array<{ brandId: string; name: string; website: string }> } | null>(prisma, WEBSITES_LAST_KEY, null)
+    const rows = last && Array.isArray(last.rows) ? last.rows : []
+    if (!rows.length) throw new Error('Nothing to undo — no websites were saved from a list.')
+    const now = await prisma.brand.findMany({ where: { id: { in: rows.map(r => r.brandId) } }, select: { id: true, website: true } })
+    const cur = new Map(now.map(b => [b.id, b.website]))
+    const goes = rows.filter(r => cur.get(r.brandId) === r.website)
+    const stays = rows.filter(r => cur.get(r.brandId) !== r.website).map(r => ({ name: r.name, why: cur.has(r.brandId) ? 'its website was changed since' : 'no longer on file' }))
+    const summary = { at: last!.at, by: last!.by ?? null, count: rows.length, goes: goes.map(g => ({ name: g.name, website: g.website })), stays }
+    if (!confirm) return { preview: true, ...summary }
+    let removed = 0
+    await prisma.$transaction(async tx => {
+      for (const g of goes) removed += (await tx.brand.updateMany({ where: { id: g.brandId, website: g.website }, data: { website: null } })).count
+      await tx.setting.delete({ where: { key: WEBSITES_LAST_KEY } })
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, removed, ...summary }
   },
 
   // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────

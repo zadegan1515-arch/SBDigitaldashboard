@@ -11,7 +11,7 @@
 // Nothing here sends an email. Instantly does, from its own campaign.
 
 import type { PrismaClient } from '@prisma/client'
-import { recordReply } from './email'
+import { CATEGORY_ANGLES, DEFAULT_ANGLE, recordReply } from './email'
 import * as api from './instantly-api'
 import { addNote, cleanEmail } from './find-emails'
 import {
@@ -19,9 +19,10 @@ import {
   stateBeats, stateOfLead, stepOfEmail, type InstantlyEvent, type InstantlyLeadIn, type LeadState,
 } from './instantly'
 import {
-  GENERAL, GROUP_CAMPAIGNS_KEY, TEMPLATES_KEY, campaignDraft, cleanSignature, cleanTemplate, fromSequence, groupLabel, isGroup, readTemplates,
-  templateSig, toSequence, type StoredTemplate, type Template, type TemplatesState,
+  GENERAL, GROUP_CAMPAIGNS_KEY, TEMPLATES_KEY, campaignDraft, cleanSignature, firstKeyOf, fromSequence, isCampaignKey, keyLabel, readSignature,
+  sequenceTemplate, templateSig, toSequence, type Template, type TemplatesState,
 } from './cold-templates'
+import { EMAIL_TEMPLATES_KEY, ownFromSave, parseOwn, templateRow, type Angles, type OwnTpl } from './email-templates'
 
 type Db = PrismaClient
 
@@ -40,112 +41,137 @@ export const chosenCampaign = (db: Db) => readJson<ChosenCampaign | null>(db, CA
 export type HookInfo = { id: string; secret: string; url: string; at: string }
 export const hookInfo = (db: Db) => readJson<HookInfo | null>(db, HOOK_KEY, null)
 
-// ---- templates and each group's campaign ---------------------------------
+// ---- the emails (Email → Templates) and each key's campaign --------------
 
 export type GroupCampaign = { id: string; name: string; at: string; by: string | null; sig?: string | null }
-// Which Instantly campaign each template group's people go to. The campaign
-// picked before there were groups stands for "Everyone else".
+// Which Instantly campaign each campaign key's people go to (cold-templates.ts:
+// 'general' or a category). The campaign picked before there were keys
+// stands for "Everyone else".
 export async function groupCampaigns(db: Db): Promise<Record<string, GroupCampaign>> {
-  const map = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  const raw = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
+  const map: Record<string, GroupCampaign> = {}
+  for (const [k, v] of Object.entries(raw ?? {})) if (isCampaignKey(k) && v && typeof v.id === 'string' && v.id) map[k] = v
   if (!map[GENERAL]) {
     const old = await chosenCampaign(db)
     if (old) map[GENERAL] = { id: old.id, name: old.name, at: old.at, by: old.by }
   }
   return map
 }
-export const templatesState = (db: Db) => readJson<TemplatesState>(db, TEMPLATES_KEY, {})
+// The category lines the standard first emails are written with (email.ts) —
+// the same ones Email → Templates shows.
+export const TEMPLATE_ANGLES: Angles = { ...CATEGORY_ANGLES, '': DEFAULT_ANGLE }
+// What Email → Templates says now: Leo's own versions (the rest follow the
+// standard text) and the footer Instantly's emails end with.
+export async function templatesNow(db: Db): Promise<{ own: Record<string, OwnTpl>; signature: string }> {
+  const [stored, state] = await Promise.all([
+    readJson<Record<string, any>>(db, EMAIL_TEMPLATES_KEY, {}), readJson<TemplatesState>(db, TEMPLATES_KEY, {}),
+  ])
+  return { own: parseOwn(stored), signature: readSignature(state) }
+}
+// A key's three emails as the dashboard has them.
+export const sequenceFor = (key: string, own: Record<string, OwnTpl>): Template => sequenceTemplate(key, own, TEMPLATE_ANGLES)
 
-// One group's template saved on the dashboard (`reset` = back to the draft),
-// and / or the signature every email ends with. Nothing goes to Instantly.
-export async function saveTemplate(db: Db, args: { group?: unknown; template?: unknown; signature?: unknown; reset?: boolean; by: string | null }) {
-  const state = await templatesState(db)
-  const groups: Record<string, StoredTemplate> = { ...(state.groups ?? {}) }
-  let saved: string | null = null
-  if (args.group !== undefined && args.group !== null && args.group !== '') {
-    if (!isGroup(args.group)) throw new Error('Unknown template')
-    if (args.reset) delete groups[args.group]
-    else groups[args.group] = { ...cleanTemplate(args.template), at: new Date().toISOString(), by: args.by }
-    saved = args.group
-  }
-  const next: TemplatesState = { ...state, groups }
-  if (args.signature !== undefined) next.signature = cleanSignature(args.signature)
-  await writeJson(db, TEMPLATES_KEY, next)
-  return { group: saved, label: saved ? groupLabel(saved) : null, reset: !!args.reset, signature: args.signature !== undefined }
+// The footer under every email in Instantly. Nothing goes to Instantly here.
+export async function saveFooter(db: Db, signature: unknown) {
+  const state = await readJson<TemplatesState>(db, TEMPLATES_KEY, {})
+  const next = cleanSignature(signature)
+  await writeJson(db, TEMPLATES_KEY, { ...state, signature: next })
+  return { signature: next }
 }
 
-const templateOf = (state: TemplatesState, group: string): { tpl: Template; signature: string } => {
-  const all = readTemplates(state)
-  const g = all.groups.find(x => x.key === group)
-  if (!g) throw new Error('Unknown template')
-  return { tpl: { subject: g.subject, steps: g.steps }, signature: all.signature }
-}
-
-// The dashboard's template written into the group's Instantly campaign: its
-// emails replaced there, or — the first time — a new campaign made for it,
-// as a draft (the inbox, and starting it, are Leo's in Instantly).
-export async function pushTemplate(db: Db, group: unknown, by: string | null) {
-  if (!isGroup(group)) throw new Error('Unknown template')
-  const { tpl, signature } = templateOf(await templatesState(db), group)
-  const sequences = toSequence(tpl, signature)
+// A key's emails written into its Instantly campaign: the words replaced
+// there (the waits between them stay as Leo set them in Instantly), or — the
+// first time — a new campaign made for it, as a draft (the inbox, and
+// starting it, are Leo's in Instantly).
+export async function pushTemplate(db: Db, key: unknown, by: string | null) {
+  if (!isCampaignKey(key)) throw new Error('Unknown template')
+  const { own, signature } = await templatesNow(db)
+  const tpl = sequenceFor(key, own)
   const map = await groupCampaigns(db)
-  const linked = map[group]
+  const linked = map[key]
   let created = false
   let campaign: { id: string; name: string }
-  let exists = false
+  let there: Awaited<ReturnType<typeof api.getCampaign>> | null = null
   if (linked) {
-    try { const c = await api.getCampaign(linked.id); exists = !!c?.id } catch (err) {
+    try { const c = await api.getCampaign(linked.id); there = c?.id ? c : null } catch (err) {
       if (!(err instanceof api.InstantlyError && err.status === 404)) throw err
     }
   }
-  if (linked && exists) {
-    const c = await api.patchCampaign(linked.id, { sequences })
-    campaign = { id: linked.id, name: String(c?.name || linked.name) }
+  if (linked && there) {
+    const c = await api.patchCampaign(linked.id, { sequences: toSequence(tpl, signature, there.sequences) })
+    campaign = { id: linked.id, name: String(c?.name || there.name || linked.name) }
   } else {
-    const c = await api.createCampaign(campaignDraft(group, sequences))
+    const c = await api.createCampaign(campaignDraft(key, toSequence(tpl, signature)))
     if (!c?.id) throw new Error('Instantly didn’t say which campaign it made — look in Instantly before trying again')
-    campaign = { id: String(c.id), name: String(c.name || 'SB cold · ' + groupLabel(group)) }
+    campaign = { id: String(c.id), name: String(c.name || 'SB cold · ' + keyLabel(key)) }
     created = true
   }
   const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
-  fresh[group] = { id: campaign.id, name: campaign.name, at: new Date().toISOString(), by, sig: templateSig(tpl, signature) }
+  fresh[key] = { id: campaign.id, name: campaign.name, at: new Date().toISOString(), by, sig: templateSig(tpl, signature) }
   await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
-  return { group, label: groupLabel(group), created, campaign }
+  return { group: key, label: keyLabel(key), created, campaign }
 }
 
-// The other way: Instantly's emails for a group taken as the dashboard's
-// template (after an edit made in Instantly).
-export async function pullTemplate(db: Db, group: unknown, by: string | null) {
-  if (!isGroup(group)) throw new Error('Unknown template')
-  const linked = (await groupCampaigns(db))[group]
-  if (!linked) throw new Error('No Instantly campaign for ' + groupLabel(group) + ' yet')
-  const state = await templatesState(db)
-  const { signature } = templateOf(state, group)
+// The other way: what the campaign says in Instantly taken as the
+// dashboard's words (after an edit made there). Its first email becomes this
+// key's first email on Email → Templates; a follow-up that reads differently
+// there becomes the Follow-up / Last follow-up every category shares — the
+// answer names each template that changed. One writer at a time, with
+// Email → Templates' own saves.
+export async function pullTemplate(db: Db, key: unknown, by: string | null) {
+  if (!isCampaignKey(key)) throw new Error('Unknown template')
+  const linked = (await groupCampaigns(db))[key]
+  if (!linked) throw new Error('No Instantly campaign for ' + keyLabel(key) + ' yet')
+  const signature = readSignature(await readJson<TemplatesState>(db, TEMPLATES_KEY, {}))
   const theirs = fromSequence((await api.getCampaign(linked.id)).sequences, signature)
   if (!theirs) throw new Error('That campaign has no email written in Instantly')
-  const tpl = cleanTemplate(theirs)
-  await writeJson(db, TEMPLATES_KEY, { ...state, groups: { ...(state.groups ?? {}), [group]: { ...tpl, at: new Date().toISOString(), by } } })
+  if (!theirs.subject) throw new Error('That campaign’s first email has no subject in Instantly')
+  const slots = [firstKeyOf(key), 'followup', 'final']
+  const { own, changed } = await db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${EMAIL_TEMPLATES_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: EMAIL_TEMPLATES_KEY } })
+    let stored: unknown = {}
+    try { stored = row ? JSON.parse(row.value) : {} } catch { stored = {} }
+    const cur = parseOwn(stored)
+    const took: string[] = []
+    theirs.steps.forEach((step, i) => {
+      const slot = slots[i]
+      const now = templateRow(slot, cur, TEMPLATE_ANGLES)
+      // A follow-up has no subject of its own in Instantly: it keeps the dashboard's.
+      const subject = i === 0 ? theirs.subject : now.subject
+      if (squeezed(now.body) === squeezed(step.body) && now.subject === subject) return
+      const next = ownFromSave(slot, subject, step.body, TEMPLATE_ANGLES)
+      if (next) cur[slot] = { ...next, at: new Date().toISOString(), by }
+      else delete cur[slot]
+      took.push(slot)
+    })
+    const text = JSON.stringify(cur)
+    await tx.setting.upsert({ where: { key: EMAIL_TEMPLATES_KEY }, create: { key: EMAIL_TEMPLATES_KEY, value: text }, update: { value: text } })
+    return { own: cur, changed: took }
+  })
   const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
-  fresh[group] = { ...linked, sig: templateSig(tpl, signature) }
+  fresh[key] = { ...linked, sig: templateSig(sequenceFor(key, own), signature) }
   await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
-  return { group, label: groupLabel(group), campaign: { id: linked.id, name: linked.name } }
+  return { group: key, label: keyLabel(key), campaign: { id: linked.id, name: linked.name }, changed }
 }
+const squeezed = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-// A campaign Leo made in Instantly himself, given to a group (or taken off it).
-export async function linkCampaign(db: Db, group: unknown, campaignId: string, by: string | null) {
-  if (!isGroup(group)) throw new Error('Unknown template')
+// A campaign Leo made in Instantly himself, given to a key (or taken off it).
+export async function linkCampaign(db: Db, key: unknown, campaignId: string, by: string | null) {
+  if (!isCampaignKey(key)) throw new Error('Unknown template')
   const fresh = await readJson<Record<string, GroupCampaign>>(db, GROUP_CAMPAIGNS_KEY, {})
   if (!campaignId) {
-    delete fresh[group]
+    delete fresh[key]
     await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
-    if (group === GENERAL) await db.setting.deleteMany({ where: { key: CAMPAIGN_KEY } })
-    return { group, label: groupLabel(group), campaign: null }
+    if (key === GENERAL) await db.setting.deleteMany({ where: { key: CAMPAIGN_KEY } })
+    return { group: key, label: keyLabel(key), campaign: null }
   }
   const c = await api.getCampaign(campaignId)
-  const taken = Object.entries(fresh).find(([k, v]) => k !== group && v.id === campaignId)
-  if (taken) throw new Error('That campaign is already the one for ' + groupLabel(taken[0]))
-  fresh[group] = { id: String(c.id), name: String(c.name || 'Untitled campaign'), at: new Date().toISOString(), by, sig: null }
+  const taken = Object.entries(fresh).find(([k, v]) => k !== key && isCampaignKey(k) && v?.id === campaignId)
+  if (taken) throw new Error('That campaign is already the one for ' + keyLabel(taken[0]))
+  fresh[key] = { id: String(c.id), name: String(c.name || 'Untitled campaign'), at: new Date().toISOString(), by, sig: null }
   await writeJson(db, GROUP_CAMPAIGNS_KEY, fresh)
-  return { group, label: groupLabel(group), campaign: c }
+  return { group: key, label: keyLabel(key), campaign: c }
 }
 
 const dayWords = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
@@ -342,7 +368,9 @@ export async function syncInstantly(db: Db, opts: { budgetMs?: number } = {}): P
   try {
     const mine = Object.values(await groupCampaigns(db)).map(g => g.id)
     const used = await db.instantlyLead.findMany({ where: { state: { in: ['waiting', 'sent'] }, campaignId: { not: '' } }, distinct: ['campaignId'], select: { campaignId: true } })
-    const campaigns = [...new Set([...mine, ...used.map(u => u.campaignId)])].slice(0, 12)
+    // The campaigns with people in them first, then the rest that are linked;
+    // nine a run (Instantly allows 20 email reads a minute, two a campaign).
+    const campaigns = [...new Set([...used.map(u => u.campaignId), ...mine])].slice(0, 9)
     out.campaigns = campaigns.length
     const last = await readJson<{ at?: string; ok?: boolean } | null>(db, SYNC_KEY, null)
     const oldest = await db.instantlyLead.findFirst({ orderBy: { pushedAt: 'asc' }, select: { pushedAt: true } })

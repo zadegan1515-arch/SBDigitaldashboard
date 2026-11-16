@@ -225,14 +225,19 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(st.connected, true);
     assert.equal(st.error, null);
     assert.deepEqual(st.campaigns.map(c => [c.id, c.statusWord, c.sends]), [['camp-cold', 'Active', true], ['camp-draft', 'Draft', false]]);
-    assert.deepEqual(st.templates.groups.map(g => [g.key, g.state, g.linked, g.edited, g.steps.length, g.hasBoard]),
-      ['energy', 'alcohol', 'nicotine', 'beauty', 'food', 'general'].map(k => [k, 'none', null, false, 3, true]));
-    assert.equal(st.templates.signature, 'Zach Goldstein\nCo-CEO, SB Agency');
+    // A row per campaign key Leo picked, none with a campaign yet; each one's first email is a template on Email → Templates.
+    assert.deepEqual(st.templates.groups.map(g => [g.key, g.state, g.linked, g.own, g.first, g.hasBoard, g.main]),
+      ['energy', 'alcohol', 'nicotine', 'beauty', 'cpg', 'general'].map(k => [k, 'none', null, false, k === 'general' ? 'intro' : 'cat:' + k, true, true]));
+    assert.deepEqual(st.templates.groups.find(g => g.key === 'alcohol').also, ['rtd', 'spirits']);
+    assert.deepEqual(st.templates.groups.find(g => g.key === 'cpg').also, ['beverage', 'electrolytes', 'qsr']);
+    const goesWith = Object.fromEntries(st.templates.others.map(o => [o.key, o.goesWith]));
+    assert.deepEqual([goesWith.rtd, goesWith.qsr, goesWith.tech, goesWith.fintech, goesWith.energy], ['alcohol', 'cpg', 'general', 'general', undefined]);
+    assert.equal(st.templates.signature, '', 'no footer until Leo writes one');
     assert.equal(st.counts.total, 0);
     assert.equal(st.hook.on, false);
     assert.ok(st.campaigns[1].warn.length >= 2, 'the draft with no inbox and no email is flagged');
     assert.ok(!JSON.stringify(st).includes(FAKE_KEY), 'the key never comes back');
-    ok('the page reads Instantly: connected, its campaigns, a draft template per group with no campaign yet, nothing handed over');
+    ok('the page reads Instantly: connected, its campaigns, a row per campaign key with no campaign yet, nothing handed over');
 
     // 2. Who could go — a preview, nothing written, nothing sent to Instantly.
     const before = F.calls.filter(c => c.path === '/api/v2/leads/add').length;
@@ -253,7 +258,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(line('Dr. Ann Lee, MBA').email, 'ann@cold.com');
     assert.equal(F.calls.filter(c => c.path === '/api/v2/leads/add').length, before);
     assert.equal(await prisma.instantlyLead.count(), 0);
-    ok('the preview names everyone with an address who was never emailed, each with their template — and with no campaign yet, nobody can go');
+    ok('the preview names everyone with an address who was never emailed, each with the campaign their category goes to — and with no campaign yet, nobody can go');
 
     // 3. No campaign, no send; Claude's token can give a template its campaign but never send.
     const T = (name) => line(name).contactId;
@@ -283,7 +288,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     r = await call(null, 'undoSendToInstantly', { confirm: true });
     assert.equal(r.ok, false);
     assert.equal(F.calls.filter(c => c.path === '/api/v2/leads/add').length, 0);
-    ok('a template needs its campaign (checked with Instantly, one template each); Claude’s token can preview and link, never send');
+    ok('people need a campaign to go to (checked with Instantly, one campaign key each); Claude’s token can preview and link, never send');
 
     // 4. A stale preview sends nobody.
     pv = await data(leo, 'sendToInstantly', {});
@@ -320,7 +325,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(rows.map(x => [x.email, x.state, x.campaignId, !!x.leadId, x.pushedBy, !!x.batch]),
       [['ann@cold.com', 'waiting', 'camp-cold', true, 'Leo', true], ['cy@cold.com', 'waiting', 'camp-cold', true, 'Leo', true], ['dee@two.com', 'waiting', 'camp-cold', true, 'Leo', true]]);
     assert.equal(await prisma.emailMessage.count(), 0, 'the dashboard itself sent nothing');
-    ok('Send hands the ticked people to their template’s campaign: name, title, company, website, email, their own Show Board link and our id — and the dashboard sends nothing');
+    ok('Send hands the ticked people to the campaign their category goes to: name, title, company, website, email, their own Show Board link and our id — and the dashboard sends nothing');
 
     // 6. They leave "ready"; the card counts them.
     const na = await data(leo, 'noAnswerList', {});
@@ -577,56 +582,132 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(es.totalSent, 0);
     ok('the dashboard never drafts a follow-up on top of Instantly’s sequence, and its cap and stats don’t count Instantly’s emails');
 
-    // 18c. Templates ⇄ Instantly. Claude's token can save a template on the dashboard but never push one.
-    const mineT = { subject: '(BRAND) x SB Agency', steps: [{ body: 'Hi (NAME),\n\nYour board: (BOARD)\n\nBest,', wait: 0 }, { body: 'Hi (NAME),\n\nStill there?\n\nBest,', wait: 3 }] };
-    const savedByClaude = await data(null, 'saveInstantlyTemplate', { group: 'nicotine', ...mineT });
-    assert.deepEqual([savedByClaude.saved.group, savedByClaude.pushed.length], ['nicotine', 0]);
-    r = await call(null, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    // 18c. The emails are Email → Templates'; a campaign key's three emails (its first email, then the Follow-up
+    //      and Last follow-up every category shares) are written into its Instantly campaign. Claude's token can
+    //      save a template on the dashboard but never send one to Instantly.
+    const NIC_BODY = 'Hi (NAME),\n\nYour board: (BOARD)\n\nBest,\nZach';
+    await data(null, 'saveEmailTemplate', { key: 'cat:nicotine', subject: '(BRAND) x SB Agency', body: NIC_BODY });
+    r = await call(null, 'pushInstantlyTemplate', { key: 'nicotine' });
     assert.equal(r.ok, false); assert.match(r.error, /Only someone signed in/);
-    r = await call(leo, 'saveInstantlyTemplate', { group: 'nicotine', subject: '', steps: [{ body: 'x' }] });
-    assert.equal(r.ok, false); assert.match(r.error, /subject is empty/);
+    r = await call(null, 'saveInstantlyFooter', { signature: 'x', push: true });
+    assert.equal(r.ok, false); assert.match(r.error, /Only someone signed in/);
+    r = await call(leo, 'pushInstantlyTemplate', { key: 'cat:nicotine' });
+    assert.equal(r.ok, false); assert.match(r.error, /Which template/);
     // A key that can't write campaigns: said in words, nothing made.
     F.failWrite = 403;
-    r = await call(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    r = await call(leo, 'pushInstantlyTemplate', { key: 'nicotine' });
     assert.equal(r.ok, false); assert.match(r.error, /missing a permission/);
     F.failWrite = 0;
     assert.equal(F.campaigns.length, 2);
-    // Leo pushes it: a new draft campaign in Instantly, holding the template's emails in Instantly's own form.
-    const pushed = await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    // Leo pushes it: a new draft campaign in Instantly, holding the three emails in Instantly's own form.
+    const pushed = await data(leo, 'pushInstantlyTemplate', { key: 'nicotine' });
     assert.deepEqual([pushed.pushed[0].created, pushed.pushed[0].campaign.name], [true, 'SB cold · Nicotine']);
     const made = F.campaigns.find(c => c.name === 'SB cold · Nicotine');
     assert.deepEqual([made.status, made.daily_limit, made.stop_on_reply, made.open_tracking, made.link_tracking, made.text_only], [0, 30, true, false, false, true]);
     assert.deepEqual(made.campaign_schedule.schedules[0].days, { 0: false, 1: false, 2: true, 3: true, 4: true, 5: false, 6: false });
-    assert.deepEqual(made.sequences[0].steps.map(x => [x.delay, x.variants[0].subject]), [[3, '{{companyName}} x SB Agency'], [0, '']]);
-    assert.equal(made.sequences[0].steps[0].variants[0].body, 'Hi {{firstName}},<br/><br/>Your board: {{board_link}}<br/><br/>Best,<br/>Zach Goldstein<br/>Co-CEO, SB Agency');
+    assert.deepEqual(made.sequences[0].steps.map(x => [x.delay, x.variants[0].subject]), [[3, '{{companyName}} x SB Agency'], [4, ''], [0, '']]);
+    assert.equal(made.sequences[0].steps[0].variants[0].body, 'Hi {{firstName}},<br/><br/>Your board: {{board_link}}<br/><br/>Best,<br/>Zach');
+    assert.match(made.sequences[0].steps[1].variants[0].body, /^Hi \{\{firstName\}\},<br\/><br\/>Wanted to float this back to the top of your inbox/);
+    assert.match(made.sequences[0].steps[2].variants[0].body, /Last note from me/);
     const grp = async (k) => (await data(leo, 'instantlyStatus', { live: true })).templates.groups.find(g => g.key === k);
     let nic = await grp('nicotine');
-    assert.deepEqual([nic.state, nic.linked.name, nic.campaign.statusWord, nic.campaign.sends, nic.edited], ['match', 'SB cold · Nicotine', 'Draft', false, true]);
+    assert.deepEqual([nic.state, nic.linked.name, nic.campaign.statusWord, nic.campaign.sends, nic.own, nic.first], ['match', 'SB cold · Nicotine', 'Draft', false, true, 'cat:nicotine']);
     assert.ok(nic.campaign.warn.some(w => /No sending inbox/.test(w)), 'the draft still needs its inbox');
     assert.equal((await grp('energy')).state, 'empty', 'the campaign Leo made by hand has no email of ours in it yet');
-    // Edited on the dashboard: the two differ, the dashboard's is newer; pushing it updates the same campaign.
-    await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', subject: 'Quick one, (NAME)', steps: mineT.steps });
+    // Email → Templates says where each email goes in Instantly.
+    let lib = await data(leo, 'listEmailTemplates', {});
+    const tplOf = (k) => [...lib.general, ...lib.categories].find(t => t.key === k);
+    assert.deepEqual(tplOf('cat:nicotine').instantly, { key: 'nicotine', campaign: 'SB cold · Nicotine' });
+    assert.deepEqual(tplOf('cat:energy').instantly, { key: 'energy', campaign: 'Cold — no answer on LinkedIn' });
+    assert.deepEqual(tplOf('followup').instantly, { campaigns: 2 });
+    assert.deepEqual(tplOf('cat:rtd').instantly, { goesWith: 'alcohol', label: 'Alcohol', has: false });
+    assert.deepEqual(tplOf('cat:tech').instantly, { goesWith: 'general', label: 'Everyone else', has: false });
+    assert.equal(tplOf('intro').instantly, null);
+    assert.equal(tplOf('cat:alcohol').instantly, null, 'a family’s own email with no campaign yet');
+    // Every standard first email carries the Show Board link.
+    assert.ok([tplOf('intro'), tplOf('cat:energy'), tplOf('cat:tech')].every(t => /\n\(BOARD\)\n/.test(t.body)));
+    // A wait Leo changes in Instantly isn't a change of words.
+    made.sequences[0].steps[0].delay = 2;
+    assert.equal((await grp('nicotine')).state, 'match');
+    // Edited on Templates: the two differ in the first email, the dashboard's is newer; pushing it updates the same campaign and keeps his wait.
+    await data(leo, 'saveEmailTemplate', { key: 'cat:nicotine', subject: 'Quick one, (NAME)', body: NIC_BODY });
     nic = await grp('nicotine');
-    assert.deepEqual([nic.state, nic.newer, nic.theirs.subject], ['differs', 'dashboard', '(BRAND) x SB Agency']);
-    const again = await data(leo, 'saveInstantlyTemplate', { group: 'nicotine', push: true });
+    assert.deepEqual([nic.state, nic.newer, nic.parts], ['differs', 'dashboard', { first: true, follow: false }]);
+    const again = await data(leo, 'pushInstantlyTemplate', { key: 'nicotine' });
     assert.equal(again.pushed[0].created, false);
     assert.equal(F.campaigns.filter(c => c.name === 'SB cold · Nicotine').length, 1, 'never a second campaign');
     assert.equal(made.sequences[0].steps[0].variants[0].subject, 'Quick one, {{firstName}}');
+    assert.equal(made.sequences[0].steps[0].delay, 2, 'his wait stays');
     assert.equal((await grp('nicotine')).state, 'match');
-    // Edited in Instantly instead: differs, Instantly's is newer; taking its version brings the words back as our placeholders.
-    made.sequences[0].steps[0].variants[0].body = '<div>Hey {{firstName}},</div><div><br></div><div>See {{board_link}}</div><div><br></div><div>Best,</div><div>Zach Goldstein</div><div>Co-CEO, SB Agency</div>';
+    // A follow-up every category shares, edited on Templates: every campaign is behind in its follow-ups; one push for all.
+    await data(leo, 'saveEmailTemplate', { key: 'followup', subject: 're: SB Agency x (BRAND)', body: 'Hi (NAME),\n\nBumping this.\n\nBest,\nZach' });
     nic = await grp('nicotine');
-    assert.deepEqual([nic.state, nic.newer], ['differs', 'instantly']);
-    await data(leo, 'pullInstantlyTemplate', { group: 'nicotine' });
+    assert.deepEqual([nic.state, nic.newer, nic.parts], ['differs', 'dashboard', { first: false, follow: true }]);
+    const all = await data(leo, 'pushInstantlyTemplate', { all: true });
+    assert.deepEqual(all.pushed.map(x => x.group), ['energy', 'nicotine']);
+    assert.equal(made.sequences[0].steps[1].variants[0].body, 'Hi {{firstName}},<br/><br/>Bumping this.<br/><br/>Best,<br/>Zach');
+    assert.equal((await grp('energy')).state, 'match', 'Energy’s hand-made campaign now holds the Energy emails');
+    const cold = F.campaigns.find(c => c.id === 'camp-cold');
+    assert.match(cold.sequences[0].steps[0].variants[0].body, /Concerts are a natural sampling moment for \{\{companyName\}\}/);
+    assert.match(cold.sequences[0].steps[0].variants[0].body, /<br\/>\{\{board_link\}\}<br\/>/);
+    assert.equal(cold.sequences[0].steps.length, 3);
+    // Edited in Instantly instead — its first email and its last follow-up: differs, Instantly's is newer; taking its
+    // version brings the words back as our placeholders, each into its own template.
+    made.sequences[0].steps[0].variants[0].body = '<div>Hey {{firstName}},</div><div><br></div><div>See {{board_link}}</div><div><br></div><div>Best,</div><div>Zach</div>';
+    made.sequences[0].steps[2].variants[0].body = 'Hi {{firstName}},<br/><br/>Closing the loop.<br/><br/>Best,<br/>Zach';
     nic = await grp('nicotine');
-    assert.deepEqual([nic.state, nic.steps[0].body], ['match', 'Hey (NAME),\n\nSee (BOARD)\n\nBest,']);
-    // A new signature goes to every campaign that has a template of ours.
-    const sig = await data(leo, 'saveInstantlyTemplate', { signature: 'Zach Goldstein\nSB Agency · 1 Main St, Miami FL', push: 'all' });
+    assert.deepEqual([nic.state, nic.newer, nic.parts], ['differs', 'instantly', { first: true, follow: true }]);
+    const pulled = await data(leo, 'pullInstantlyTemplate', { key: 'nicotine' });
+    assert.deepEqual(pulled.changed, ['cat:nicotine', 'final']);
+    lib = await data(leo, 'listEmailTemplates', {});
+    assert.deepEqual([tplOf('cat:nicotine').subject, tplOf('cat:nicotine').body], ['Quick one, (NAME)', 'Hey (NAME),\n\nSee (BOARD)\n\nBest,\nZach']);
+    assert.deepEqual([tplOf('final').subject, tplOf('final').body, tplOf('final').own], ['re: SB Agency x (BRAND)', 'Hi (NAME),\n\nClosing the loop.\n\nBest,\nZach', true]);
+    assert.equal(tplOf('followup').body, 'Hi (NAME),\n\nBumping this.\n\nBest,\nZach', 'what didn’t change there stays');
+    assert.equal((await grp('nicotine')).state, 'match');
+    // The last follow-up is everyone's: Energy's campaign is now behind the dashboard.
+    const en = await grp('energy');
+    assert.deepEqual([en.state, en.newer, en.parts], ['differs', 'dashboard', { first: false, follow: true }]);
+    // A footer goes under every email of every campaign.
+    const sig = await data(leo, 'saveInstantlyFooter', { signature: 'SB Agency · 1 Main St, Miami FL', push: true });
     assert.deepEqual(sig.pushed.map(x => x.group), ['energy', 'nicotine']);
-    assert.match(made.sequences[0].steps[1].variants[0].body, /Best,<br\/>Zach Goldstein<br\/>SB Agency · 1 Main St, Miami FL$/);
+    assert.match(made.sequences[0].steps[1].variants[0].body, /Best,<br\/>Zach<br\/><br\/>SB Agency · 1 Main St, Miami FL$/);
+    assert.match(cold.sequences[0].steps[2].variants[0].body, /Closing the loop\.<br\/><br\/>Best,<br\/>Zach<br\/><br\/>SB Agency · 1 Main St, Miami FL$/);
     assert.equal((await grp('nicotine')).state, 'match');
-    assert.equal((await grp('energy')).state, 'match', 'Energy’s hand-made campaign now holds the Energy template');
-    ok('a template is saved on the dashboard and written into its own Instantly campaign (a draft the first time); the page says when they differ and whose is newer, either can be taken, and a new signature reaches every campaign');
+    assert.equal((await grp('energy')).state, 'match');
+    assert.equal((await data(leo, 'instantlyStatus', {})).templates.signature, 'SB Agency · 1 Main St, Miami FL');
+    ok('a campaign’s three emails come from Email → Templates and are written into Instantly (a draft campaign the first time, Leo’s waits kept); the page says which part differs and whose is newer, either can be taken, a shared follow-up and the footer reach every campaign');
+
+    // 18c2. Which campaign a category goes to: its own, else its family's; a family never gets the general email;
+    //       everyone else goes with the general one.
+    const niaLine = async () => (await data(leo, 'sendToInstantly', {})).lines.find(l => l.name === 'Nia New');
+    await prisma.brand.update({ where: { id: 'b_nova' }, data: { category: 'rtd' } });
+    let nl = await niaLine();
+    assert.deepEqual([nl.action, nl.tpl, nl.tplLabel], ['nocamp', 'alcohol', 'Alcohol']);
+    assert.match(nl.why, /No Instantly campaign for Alcohol yet/);
+    await data(leo, 'pushInstantlyTemplate', { key: 'general' });
+    assert.equal((await niaLine()).action, 'nocamp', 'a beer brand never gets the Everyone else email');
+    await data(leo, 'pushInstantlyTemplate', { key: 'alcohol' });
+    nl = await niaLine();
+    assert.deepEqual([nl.action, nl.tpl, nl.campaignId], ['send', 'alcohol', F.campaigns.find(c => c.name === 'SB cold · Alcohol').id]);
+    // Beer given a campaign of its own: its brands leave Alcohol's; it gets a row; Templates says so.
+    await data(leo, 'pushInstantlyTemplate', { key: 'rtd' });
+    nl = await niaLine();
+    assert.deepEqual([nl.action, nl.tpl, nl.tplLabel, nl.campaignId], ['send', 'rtd', 'Beer, Seltzers & Canned Cocktails', F.campaigns.find(c => c.name === 'SB cold · Beer, Seltzers & Canned Cocktails').id]);
+    st = await data(leo, 'instantlyStatus', { live: true });
+    assert.deepEqual(st.templates.groups.map(g => [g.key, g.main]), [['energy', true], ['alcohol', true], ['nicotine', true], ['beauty', true], ['cpg', true], ['general', true], ['rtd', false]]);
+    assert.deepEqual(st.templates.groups.find(g => g.key === 'alcohol').also, ['spirits']);
+    assert.ok(!st.templates.others.some(o => o.key === 'rtd'));
+    lib = await data(leo, 'listEmailTemplates', {});
+    assert.deepEqual(tplOf('cat:rtd').instantly, { key: 'rtd', campaign: 'SB cold · Beer, Seltzers & Canned Cocktails' });
+    assert.deepEqual(tplOf('cat:spirits').instantly, { goesWith: 'alcohol', label: 'Alcohol', has: true });
+    assert.deepEqual(tplOf('intro').instantly, { key: 'general', campaign: 'SB cold · Everyone else' });
+    // A category in no family goes with Everyone else.
+    await prisma.brand.update({ where: { id: 'b_nova' }, data: { category: 'tech' } });
+    nl = await niaLine();
+    assert.deepEqual([nl.action, nl.tpl, nl.tplLabel], ['send', 'general', 'Everyone else']);
+    assert.equal((await data(leo, 'sendToInstantly', {})).byCategory.tech, 1);
+    await prisma.brand.update({ where: { id: 'b_nova' }, data: { category: 'nicotine' } });
+    ok('a category goes to its own campaign, else its family’s; a family never falls to the general email; any category can be given a campaign of its own');
 
     // 18d. Someone at a brand not reached yet, with no outreach row: ticked by hand, she gets a row (next in line —
     //      the LinkedIn queue's numbers don't move), her own Show Board link, and goes to her template's campaign.
@@ -670,7 +751,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await fetch(BASE + '/api/public/shows?code=' + code + '&p=ZZZZZZ', { headers: { 'x-forwarded-for': '10.0.0.2' } }).catch(() => null);
     assert.deepEqual((await prisma.boardVisit.findMany({ where: { brandId: 'b_nova' } })).map(v => v.email), [null, null]);
     assert.equal((await data(leo, 'instantlyStatus', {})).counts.opened, 0);
-    ok('someone at a brand not reached yet goes when ticked: an outreach row (next in line), her template’s campaign, and her own Show Board link — opening it shows on the page as hers');
+    ok('someone at a brand not reached yet goes when ticked: an outreach row (next in line), her category’s campaign, and her own Show Board link — opening it shows on the page as hers');
 
     // 19. A bad key, a lapsed plan: said in words, nothing breaks.
     F.fail = 401;
@@ -692,9 +773,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 20. Claude's day: picking the campaign is a change; a preview and a status read are not.
     const acts = await prisma.claudeAction.findMany({ orderBy: { at: 'asc' } });
-    assert.deepEqual(acts.map(a => a.fn), ['setInstantlyCampaign', 'saveInstantlyTemplate']);
+    assert.deepEqual(acts.map(a => a.fn), ['setInstantlyCampaign', 'saveEmailTemplate']);
     assert.match(acts[0].text, /Set the Instantly campaign for Energy drinks: Cold/);
-    assert.equal(acts[1].text, 'Saved the Nicotine cold email template');
+    assert.match(acts[1].text, /Saved the cat:nicotine email template/);
     ok('Claude’s day lists the campaign Claude linked and the template it saved — never a read, a preview or a refused send or push');
 
     // 21. Live updates off: our webhook leaves Instantly, and its secret opens nothing.

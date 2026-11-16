@@ -37,6 +37,7 @@ const NEEDS_YES: Record<string, string[]> = {
   elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
   deleteTalksEvent: ['confirm'], removeReferral: ['confirm'],
   saveFoundEmails: ['confirm'], undoFoundEmails: ['confirm'],
+  saveBrandWebsites: ['confirm'], undoBrandWebsites: ['confirm'],
   sendToInstantly: ['confirm'], undoSendToInstantly: ['confirm'],
 }
 // Calls that preview unless told preview: false.
@@ -84,17 +85,14 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'reviewNewBrands': return `${a.action === 'archive' ? 'Archived' : 'Kept'} ${plural(count(a.ids), 'brand')} from New from LinkedIn`
     case 'saveHandTemplate': return `Saved the ${s(a.kind || 'email')} message template on Zach's list`
     case 'saveFoundEmails': return `Saved ${plural(Number(r.saved) || 0, 'email')} from Hunter's file`
+    case 'saveBrandWebsites': return `Filled in the website of ${plural(Number(r.saved) || 0, 'brand')}`
+    case 'undoBrandWebsites': return `Took back ${plural(Number(r.removed) || 0, 'website')} filled in from a list`
     case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
     // Instantly (a Claude session can pick the campaign, turn live updates on
     // and sync; handing people over is a signed-in person's click only).
     case 'setInstantlyCampaign': return r.campaign ? `Set the Instantly campaign for ${s(r.label || 'everyone')}: ${s(r.campaign?.name)}` : `Took the Instantly campaign off ${s(r.label || 'a template')}`
-    case 'saveInstantlyTemplate': {
-      const what = r.saved?.group ? (r.saved.reset ? `Put the ${s(r.saved.label)} cold email back to its draft` : `Saved the ${s(r.saved.label)} cold email template`)
-        : r.saved?.signature ? 'Changed the cold emails’ signature' : ''
-      const sent = count(r.pushed) ? `sent ${count(r.pushed) === 1 ? s(r.pushed[0].label) : plural(count(r.pushed), 'template')} to Instantly` : ''
-      return [what, sent].filter(Boolean).join(' and ') || null
-    }
-    case 'pullInstantlyTemplate': return `Took Instantly’s version of the ${s(r.label)} cold email as the dashboard’s`
+    case 'saveInstantlyFooter': return 'Changed the footer under the Instantly emails'
+    case 'pullInstantlyTemplate': return `Took Instantly’s version of the ${s(r.label)} emails as the dashboard’s templates`
     case 'setInstantlyHook': return r.on ? 'Turned on live updates from Instantly' : 'Turned off live updates from Instantly'
     case 'instantlySync': {
       const bits = [
@@ -105,6 +103,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
       return bits.length ? `Synced with Instantly: ${bits.join(', ')}` : null
     }
     case 'setCategoryPriority': return 'Changed the category priority'
+    case 'saveEmailTemplate': return a.reset ? `Put the ${s(a.key)} email template back to its default` : `Saved the ${s(a.key)} email template`
     case 'liPageRetry': return `Sent ${brand || 'a brand'} back to the LinkedIn fill`
     case 'addDiscoveredBulk': return `Added ${plural(Number(r.added) || 0, 'brand')} from Discover`
     case 'addDiscoveredBrand': return 'Added a brand from Discover'

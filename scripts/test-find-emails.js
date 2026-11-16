@@ -276,13 +276,16 @@ async function main() {
 
   // ---- brands with nobody to look up: their websites, one a line ----
   // Three brands, two lines: two of them are one company's (the same website), looked up once — the count of brands matches the every-brand line.
-  assert.match(await page.textContent('#fe-doms'), /3 brands not reached yet have nobody on file to look up\. Download their websites \(2\) for Hunter’s Bulks → Domain Search/);
-  assert.match(await page.textContent('#fe-doms'), /1 shares a line with a sister brand/);
+  // Every company still missing emails: the four on the people file and the three with nobody on file. Two share a
+  // website (looked up once), and two are labels of Diageo, which goes by its name.
+  assert.match(await page.textContent('#fe-doms'), /Domain Search — 7 companies still missing emails \(3 with nobody on file\)\. Download their websites \(5\) for Hunter’s Bulks → Domain Search/);
+  assert.match(await page.textContent('#fe-doms'), /2 share a line with a sister brand/);
+  assert.match(await page.textContent('#fe-doms'), /2 have no website on file and go by name/);
   assert.equal(await page.getAttribute('#fe-doms a', 'href'), 'https://hunter.io/bulks/domain-search');
   f = await grab('#fe-doms [data-fe="domains"]');
   assert.equal(f.name, 'sb-brand-websites-2026-11-16.csv');
-  // One company a line, a website once, a parent's label by the parent's name.
-  assert.deepEqual(f.grid, [['zestsoda.com'], ['Diageo']]);
+  // One company a line, by category; a website once, a parent's label by the parent's name.
+  assert.deepEqual(f.grid, [['alphaenergy.com'], ['Diageo'], ['gammadrinks.com'], ['zestsoda.com'], ['novapouch.com']]);
   ok('brands with nobody on file download as a list of websites for Domain Search');
 
   // ---- by category ----
@@ -296,7 +299,7 @@ async function main() {
   assert.match(text, /Not reached out to yet · 1/);
   assert.match(await page.textContent('#fe-tally'), /^Nicotine Pouches — 2 brands: 1 have someone to look up · 1 already have an email\.$/);
   assert.equal(await page.$('#fe-left'), null);
-  assert.equal(await page.$('#fe-doms'), null);
+  assert.match(await page.textContent('#fe-doms'), /Domain Search — 1 company still missing emails\. Download their websites \(1\)/);
   f = await grab('#fe-card [data-fe="download"]');
   assert.equal(f.name, 'sb-need-emails-nicotine-2026-11-16.csv');
   assert.deepEqual(f.grid.slice(1).map((r) => [r[9], r[5]]), [['f1', 'Nicotine Pouches']]);
@@ -304,7 +307,7 @@ async function main() {
   await page.selectOption('#fe-cat', 'beverage');
   assert.match(await page.textContent('#fe-need'), /^0 people/);
   assert.equal(await page.isDisabled('#fe-card [data-fe="download"]'), true);
-  assert.match(await page.textContent('#fe-doms'), /2 brands not reached yet have nobody on file to look up\. Download their websites \(1\)/);
+  assert.match(await page.textContent('#fe-doms'), /Domain Search — 2 companies still missing emails \(2 with nobody on file\)\. Download their websites \(1\)/);
   f = await grab('#fe-doms [data-fe="domains"]');
   assert.equal(f.name, 'sb-brand-websites-beverage-2026-11-16.csv');
   assert.deepEqual(f.grid, [['zestsoda.com']]);

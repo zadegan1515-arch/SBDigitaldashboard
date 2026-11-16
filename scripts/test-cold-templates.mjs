@@ -1,10 +1,12 @@
-// node scripts/test-cold-templates.mjs — the cold email templates, one per
-// kind of brand, kept on the dashboard and written into Instantly (Leo, Nov
-// 16 2026; src/lib/cold-templates.ts), and each person's own Show Board link
-// (src/lib/board-key.ts): which template a category gets, the drafts, what's
-// kept when one is saved, the dashboard's placeholders ⇄ Instantly's, a
-// template as Instantly's sequence and back, whether the two say the same
-// thing, the campaign a group gets, and the personal link's key.
+// node scripts/test-cold-templates.mjs — the cold emails Instantly sends
+// (Leo, Nov 16 2026; src/lib/cold-templates.ts): the words come from
+// Email → Templates (email-templates.ts), one Instantly campaign per campaign
+// key — which campaign a brand's category goes to (its own, its family's, the
+// general one), a key's three emails, the dashboard's placeholders ⇄
+// Instantly's, the emails as Instantly's sequence and back (Leo's waits
+// kept), whether a campaign still says what the dashboard says and which part
+// doesn't, the campaign a key gets — and each person's own Show Board link
+// (src/lib/board-key.ts).
 import { execSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,151 +21,167 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
 const T = await import(pathToFileURL(join(out, 'cold-templates.js')).href)
+const E = await import(pathToFileURL(join(out, 'email-templates.js')).href)
+const C = await import(pathToFileURL(join(out, 'category-hints.js')).href)
 const B = await import(pathToFileURL(join(out, 'board-key.js')).href)
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
-const SIG = 'Zach Goldstein\nCo-CEO, SB Agency'
+const SIG = 'Zach Goldstein\nCo-CEO, SB Agency\n1 Main St, New York, NY'
+const ANGLES = { energy: { insert: 'Cold cans for {brand}.' }, '': { insert: 'Ideas for {brand}.' } }
+const has = (...keys) => k => keys.includes(k)
 
-// ---- which template a brand gets
-t('a brand’s category picks its template; anything else gets the general one', () => {
-  assert.equal(T.groupOfCategory('energy'), 'energy')
-  for (const c of ['alcohol', 'rtd', 'spirits']) assert.equal(T.groupOfCategory(c), 'alcohol', c)
-  assert.equal(T.groupOfCategory('nicotine'), 'nicotine')
-  assert.equal(T.groupOfCategory('beauty'), 'beauty')
-  for (const c of ['cpg', 'beverage', 'electrolytes', 'qsr']) assert.equal(T.groupOfCategory(c), 'food', c)
-  for (const c of ['tech', 'apps', 'betting', 'apparel', '', null, undefined, 'something-new']) assert.equal(T.groupOfCategory(c), 'general', String(c))
-  assert.equal(T.groupOfCategory(' Energy '), 'energy')
-  assert.deepEqual(T.TEMPLATE_GROUPS.map(g => g.key), ['energy', 'alcohol', 'nicotine', 'beauty', 'food', 'general'])
-  assert.equal(T.groupLabel('food'), 'Food, drinks & CPG')
-  assert.equal(T.isGroup('energy'), true); assert.equal(T.isGroup('toString'), false)
-  // No category sits in two groups.
-  const all = T.TEMPLATE_GROUPS.flatMap(g => g.categories)
+// ---- which campaign a brand goes to
+t('Leo’s picks have a row from the start; a campaign key is "general" or a category', () => {
+  assert.deepEqual(T.MAIN_KEYS, ['energy', 'alcohol', 'nicotine', 'beauty', 'cpg', 'general'])
+  for (const k of ['general', ...C.CATEGORY_KEYS]) assert.equal(T.isCampaignKey(k), true, k)
+  for (const k of ['', 'food', 'cat:energy', 'intro', 'toString', '__proto__', null, undefined]) assert.equal(T.isCampaignKey(k), false, String(k))
+  // No category sits in two families, and every family category is a real one.
+  const all = T.FAMILIES.flatMap(f => [f.key, ...f.also])
   assert.equal(new Set(all).size, all.length)
+  for (const c of all) assert.ok(C.CATEGORY_KEYS.includes(c), c)
+})
+t('a category goes to its own campaign, else its family’s; a family never falls through to the general email', () => {
+  // Nothing yet: nobody can go.
+  for (const c of ['energy', 'rtd', 'tech', '']) assert.equal(T.campaignKeyOf(c, has()), null, c)
+  // The family's campaign takes its categories.
+  for (const c of ['alcohol', 'rtd', 'spirits', ' RTD ']) assert.equal(T.campaignKeyOf(c, has('alcohol', 'general')), 'alcohol', c)
+  for (const c of ['cpg', 'beverage', 'electrolytes', 'qsr']) assert.equal(T.campaignKeyOf(c, has('cpg')), 'cpg', c)
+  // One given its own campaign leaves the family's.
+  assert.equal(T.campaignKeyOf('rtd', has('alcohol', 'rtd')), 'rtd')
+  assert.equal(T.campaignKeyOf('spirits', has('alcohol', 'rtd')), 'alcohol')
+  // A family with no campaign waits — even when the general one exists.
+  for (const c of ['energy', 'alcohol', 'rtd', 'nicotine', 'beauty', 'electrolytes']) assert.equal(T.campaignKeyOf(c, has('general')), null, c)
+  // Everyone else goes with the general one, until given their own.
+  for (const c of ['tech', 'fintech', 'betting', 'apparel', '', null, undefined, 'something-new']) assert.equal(T.campaignKeyOf(c, has('general', 'energy')), 'general', String(c))
+  assert.equal(T.campaignKeyOf('fintech', has('general', 'fintech')), 'fintech')
+  assert.equal(T.campaignKeyOf('something-new', has('something-new', 'general')), 'general', 'a key that is no category is never a campaign')
+  // What each waits for when it has nowhere to go.
+  assert.equal(T.waitsOn('rtd'), 'alcohol'); assert.equal(T.waitsOn('energy'), 'energy'); assert.equal(T.waitsOn('qsr'), 'cpg')
+  assert.equal(T.waitsOn('tech'), 'general'); assert.equal(T.waitsOn(''), 'general')
+})
+t('names: Leo’s own word for a family, "Everyone else", the site’s name for a category — the same names as the page', () => {
+  assert.equal(T.keyLabel('general'), 'Everyone else')
+  assert.equal(T.keyLabel('alcohol'), 'Alcohol'); assert.equal(T.keyLabel('cpg'), 'Food, drinks & CPG'); assert.equal(T.keyLabel('energy'), 'Energy drinks')
+  assert.equal(T.keyLabel('rtd'), 'Beer, Seltzers & Canned Cocktails'); assert.equal(T.keyLabel('fintech'), 'Fintech')
+  // CATEGORY_LABELS is CAT_NAMES in app.html, word for word.
+  const html = readFileSync(new URL('../public/app.html', import.meta.url), 'utf8')
+  const block = html.slice(html.indexOf('var CAT_NAMES = {'), html.indexOf('};', html.indexOf('var CAT_NAMES = {')))
+  const page = {}
+  for (const m of block.matchAll(/([a-z]+):'([^']+)'/g)) page[m[1]] = m[2]
+  assert.deepEqual(T.CATEGORY_LABELS, page)
+  assert.deepEqual(Object.keys(T.CATEGORY_LABELS).sort(), [...C.CATEGORY_KEYS].sort())
 })
 
-// ---- the drafts
-t('every group has a draft: a subject, three emails, the Show Board link in the first one only', () => {
-  for (const g of T.TEMPLATE_GROUPS) {
-    const d = T.DEFAULT_TEMPLATES[g.key]
-    assert.ok(d, g.key)
-    assert.equal(d.subject, '(BRAND) x SB Agency')
-    assert.deepEqual(d.steps.map(s => s.wait), [0, 3, 4], g.key)
-    assert.equal(T.hasBoard(d.steps[0].body), true, g.key + ': the first email carries (BOARD)')
-    assert.equal(d.steps.slice(1).some(s => T.hasBoard(s.body)), false, g.key + ': follow-ups have no link')
-    for (const s of d.steps) {
-      assert.match(s.body, /^Hi \(NAME\),/)
-      assert.ok(!/https?:\/\//.test(s.body), g.key + ': no link but the board')
-      assert.ok(s.body.split(/\s+/).length <= 130, g.key + ': short')
-      assert.ok(!/[—]/.test(s.body), g.key + ': no long dashes')
-    }
-    assert.match(d.steps[0].body, /just say the word and I won’t follow up/, g.key + ': a way out')
-  }
-  // Each group's first email says something of its own.
-  assert.equal(new Set(T.TEMPLATE_GROUPS.map(g => T.DEFAULT_TEMPLATES[g.key].steps[0].body)).size, T.TEMPLATE_GROUPS.length)
-  // Alcohol and nicotine say 21+; nicotine never promises samples.
-  assert.match(T.DEFAULT_TEMPLATES.alcohol.steps[0].body, /21\+/)
-  assert.match(T.DEFAULT_TEMPLATES.nicotine.steps[0].body, /21\+/)
-  assert.ok(!/sampl/i.test(T.DEFAULT_TEMPLATES.nicotine.steps[0].body))
+// ---- the three emails of a key
+t('a key’s emails are its first email on Templates, then the Follow-up and Last follow-up every category shares', () => {
+  assert.equal(T.firstKeyOf('general'), 'intro'); assert.equal(T.firstKeyOf('energy'), 'cat:energy')
+  const e = T.sequenceTemplate('energy', {}, ANGLES)
+  assert.equal(e.subject, 'SB Agency x (BRAND)')
+  assert.equal(e.steps.length, 3)
+  assert.match(e.steps[0].body, /Cold cans for \(BRAND\)\./)
+  assert.equal(e.steps[1].body, E.defaultTemplate('followup').body)
+  assert.equal(e.steps[2].body, E.defaultTemplate('final').body)
+  assert.deepEqual(e.steps.map(s => s.wait), [0, 3, 4])
+  // The Show Board link: in the first email only.
+  assert.equal(T.hasBoard(e.steps[0].body), true)
+  assert.equal(T.hasBoard(e.steps[1].body) || T.hasBoard(e.steps[2].body), false)
+  // The general one is the First email with no category line.
+  const g = T.sequenceTemplate('general', {}, ANGLES)
+  assert.equal(g.steps[0].body, E.defaultTemplate('intro').body)
+  // Leo's own versions win, each where it belongs.
+  const own = E.parseOwn({ 'cat:energy': { subject: 'Mine', body: 'Hi (NAME), (BOARD)' }, followup: { subject: 're: x', body: 'Bump, (NAME).' } })
+  const mine = T.sequenceTemplate('energy', own, ANGLES)
+  assert.equal(mine.subject, 'Mine'); assert.equal(mine.steps[0].body, 'Hi (NAME), (BOARD)'); assert.equal(mine.steps[1].body, 'Bump, (NAME).')
+  assert.equal(T.sequenceTemplate('beauty', own, ANGLES).steps[1].body, 'Bump, (NAME).', 'the follow-up is everyone’s')
+  assert.equal(T.sequenceTemplate('beauty', own, ANGLES).subject, 'SB Agency x (BRAND)')
 })
 
-// ---- saving
-t('a saved template is cleaned: one-line subject, one to three emails, the first with no wait', () => {
-  const c = T.cleanTemplate({ subject: '  Hello\nthere  ', steps: [{ body: '  First  \r\nline  ', wait: 9 }, { body: '', wait: 2 }, { body: 'Second', wait: 0 }, { body: 'Third', wait: 500 }, { body: 'Fourth', wait: 1 }] })
-  assert.equal(c.subject, 'Hello there')
-  assert.deepEqual(c.steps, [{ body: 'First\nline', wait: 0 }, { body: 'Second', wait: 1 }, { body: 'Third', wait: 60 }])
-  assert.throws(() => T.cleanTemplate({ subject: '', steps: [{ body: 'x' }] }), /subject is empty/)
-  assert.throws(() => T.cleanTemplate({ subject: 'x', steps: [{ body: '   ' }] }), /first email is empty/)
-  assert.throws(() => T.cleanTemplate(null), /subject is empty/)
-  assert.equal(T.cleanSignature('  Zach  \r\nSB Agency \n'), 'Zach\nSB Agency')
-})
-t('each group reads its saved template, else the draft; a broken saved one falls back to the draft', () => {
-  const r = T.readTemplates({ signature: 'Leo', groups: { energy: { subject: 'Mine', steps: [{ body: 'Hi (NAME)', wait: 0 }], at: '2026-11-16T00:00:00Z', by: 'Leo' }, beauty: { subject: '', steps: [] } } })
-  assert.equal(r.signature, 'Leo')
-  const g = (k) => r.groups.find(x => x.key === k)
-  assert.deepEqual([g('energy').subject, g('energy').edited, g('energy').by, g('energy').steps.length], ['Mine', true, 'Leo', 1])
-  assert.equal(g('beauty').subject, '(BRAND) x SB Agency')
-  assert.deepEqual([g('alcohol').edited, g('alcohol').steps.length], [false, 3])
-  assert.equal(T.readTemplates(null).signature, T.DEFAULT_SIGNATURE)
-  assert.equal(T.readTemplates({ signature: '' }).signature, '', 'an emptied signature stays empty')
-})
-
-// ---- placeholders
+// ---- placeholders, HTML, the footer
 t('the dashboard’s placeholders become Instantly’s variables, and come back', () => {
-  const mine = 'Hi (NAME), [Name] at (BRAND) [Brand], (TITLE) [Title]: (BOARD) [Board]'
-  const theirs = T.toInstantlyVars(mine)
-  assert.equal(theirs, 'Hi {{firstName}}, {{firstName}} at {{companyName}} {{companyName}}, {{jobTitle}} {{jobTitle}}: {{board_link}} {{board_link}}')
-  assert.equal(T.fromInstantlyVars('{{ firstName }} {{companyName}} {{jobTitle}} {{ board_link }} {{unknown}}'), '(NAME) (BRAND) (TITLE) (BOARD) {{unknown}}')
-  assert.equal(T.BOARD_VAR, 'board_link')
+  const s = 'Hi (NAME) at (BRAND), (TITLE): (BOARD) [Name] [brand]'
+  assert.equal(T.toInstantlyVars(s), 'Hi {{firstName}} at {{companyName}}, {{jobTitle}}: {{board_link}} {{firstName}} {{companyName}}')
+  assert.equal(T.fromInstantlyVars('Hi {{firstName}} at {{ companyName }}, {{jobTitle}}: {{board_link}}'), 'Hi (NAME) at (BRAND), (TITLE): (BOARD)')
+  assert.equal(T.hasBoard('x (BOARD) y'), true); assert.equal(T.hasBoard('x [board] y'), true); assert.equal(T.hasBoard('x {{board_link}} y'), false)
 })
 t('plain text goes out as the HTML Instantly wants, and whatever HTML it keeps reads back as text', () => {
-  assert.equal(T.toHtml('Hi (NAME),\n\nTom & Jerry <3\n(BOARD)'), 'Hi {{firstName}},<br/><br/>Tom &amp; Jerry &lt;3<br/>{{board_link}}')
-  assert.equal(T.fromHtml('Hi {{firstName}},<br/><br/>Tom &amp; Jerry &lt;3<br>{{board_link}}'), 'Hi (NAME),\n\nTom & Jerry <3\n(BOARD)')
-  assert.equal(T.fromHtml('<div>Hi {{firstName}},</div><div><br></div><div>It&#39;s&nbsp;us</div><p>Bye</p>'), 'Hi (NAME),\n\nIt\'s us\nBye')
-  assert.equal(T.fromHtml(null), '')
+  assert.equal(T.toHtml('Hi (NAME),\n\nA & B <now>\n(BOARD)'), 'Hi {{firstName}},<br/><br/>A &amp; B &lt;now&gt;<br/>{{board_link}}')
+  assert.equal(T.fromHtml('<div>Hi {{firstName}},</div><div><br></div><p>A &amp; B&nbsp;&lt;now&gt;</p>{{board_link}}'), 'Hi (NAME),\n\nA & B <now>\n(BOARD)')
 })
-t('the signature goes under every email and comes off again when Instantly’s copy is read', () => {
-  assert.equal(T.withSignature('Hi\n\nBest,\n', SIG), 'Hi\n\nBest,\n' + SIG)
-  assert.equal(T.withSignature('Hi', '  '), 'Hi')
-  assert.equal(T.withoutSignature('Hi\n\nBest,\n' + SIG, SIG), 'Hi\n\nBest,')
-  assert.equal(T.withoutSignature('Hi\n\nBest,\nSomeone else', SIG), 'Hi\n\nBest,\nSomeone else')
-})
-
-// ---- the sequence
-const tpl = { subject: '(BRAND) x SB Agency', steps: [{ body: 'Hi (NAME),\n\n(BOARD)\n\nBest,', wait: 0 }, { body: 'Hi (NAME),\n\nAgain.\n\nBest,', wait: 3 }, { body: 'Hi (NAME),\n\nLast.\n\nBest,', wait: 4 }] }
-t('a template becomes Instantly’s one sequence: each step carries the wait before the NEXT email; follow-ups stay in the thread', () => {
-  const seq = T.toSequence(tpl, SIG)
-  assert.equal(seq.length, 1)
-  assert.deepEqual(seq[0].steps.map(s => [s.type, s.delay, s.delay_unit, s.variants.length]), [['email', 3, 'days', 1], ['email', 4, 'days', 1], ['email', 0, 'days', 1]])
-  assert.deepEqual(seq[0].steps.map(s => s.variants[0].subject), ['{{companyName}} x SB Agency', '', ''])
-  assert.equal(seq[0].steps[0].variants[0].body, 'Hi {{firstName}},<br/><br/>{{board_link}}<br/><br/>Best,<br/>Zach Goldstein<br/>Co-CEO, SB Agency')
-})
-t('Instantly’s sequence reads back as the same template', () => {
-  assert.deepEqual(T.fromSequence(T.toSequence(tpl, SIG), SIG), tpl)
-  // Its first enabled variant; hours and minutes read as days; a missing or empty sequence is nothing.
-  const theirs = [{ steps: [
-    { type: 'email', delay: 48, delay_unit: 'hours', variants: [{ subject: 'Off', body: 'x', v_disabled: true }, { subject: 'Hi {{firstName}}', body: '<div>One</div>' }] },
-    { type: 'email', delay: 0, variants: [{ subject: '', body: 'Two' }] },
-  ] }]
-  assert.deepEqual(T.fromSequence(theirs, SIG), { subject: 'Hi (NAME)', steps: [{ body: 'One', wait: 0 }, { body: 'Two', wait: 2 }] })
-  assert.equal(T.fromSequence([], SIG), null)
-  assert.equal(T.fromSequence([{ steps: [] }], SIG), null)
-  assert.equal(T.fromSequence(undefined, SIG), null)
-})
-t('the dashboard’s copy and Instantly’s match when they’d send the same emails, whatever the markup', () => {
-  const state = (o) => T.syncState({ mine: tpl, signature: SIG, linked: true, found: true, theirs: tpl, ...o })
-  assert.deepEqual(state({}), { state: 'match', newer: null })
-  const spaced = { subject: ' (BRAND)  x SB Agency ', steps: tpl.steps.map(s => ({ body: s.body.replace(/\n\n/g, '\n \n\n'), wait: s.wait })) }
-  assert.equal(state({ theirs: spaced }).state, 'match')
-  assert.equal(state({ linked: false }).state, 'none')
-  assert.equal(state({ found: false }).state, 'gone')
-  assert.deepEqual(state({ theirs: null }), { state: 'empty', newer: 'dashboard' })
-  // A changed word, a changed wait, a dropped step: differs.
-  const other = { subject: tpl.subject, steps: [{ body: 'Hi (NAME),\n\nNew words\n\nBest,', wait: 0 }, ...tpl.steps.slice(1)] }
-  assert.equal(state({ theirs: other }).state, 'differs')
-  assert.equal(state({ theirs: { ...tpl, steps: [tpl.steps[0], { ...tpl.steps[1], wait: 5 }, tpl.steps[2]] } }).state, 'differs')
-  assert.equal(state({ theirs: { ...tpl, steps: tpl.steps.slice(0, 2) } }).state, 'differs')
-  // Whose copy changed since the last push.
-  assert.equal(state({ theirs: other, pushedSig: T.templateSig(other, SIG) }).newer, 'dashboard')
-  assert.equal(state({ theirs: other, pushedSig: T.templateSig(tpl, SIG) }).newer, 'instantly')
-  assert.equal(state({ theirs: other, pushedSig: null }).newer, null)
+t('the footer goes under every email and comes off again when Instantly’s copy is read; none by default', () => {
+  assert.equal(T.DEFAULT_SIGNATURE, '')
+  assert.equal(T.readSignature(null), ''); assert.equal(T.readSignature({ signature: SIG }), SIG)
+  assert.equal(T.withSignature('Best,\nZach\n', ''), 'Best,\nZach')
+  const out = T.withSignature('Best,\nZach', SIG)
+  assert.equal(out, 'Best,\nZach\n\n' + SIG)
+  assert.equal(T.withoutSignature(out, SIG), 'Best,\nZach')
+  assert.equal(T.withoutSignature('Best,\nZach', SIG), 'Best,\nZach', 'nothing to take off')
+  assert.equal(T.cleanSignature('  A  \r\nB   \n'), 'A\nB')
 })
 
-// ---- the campaign
+// ---- Instantly's sequence
+const TPL = { subject: 'Hi from (BRAND)', steps: [{ body: 'One (NAME)\n(BOARD)\n\nBest,\nZach', wait: 0 }, { body: 'Two', wait: 3 }, { body: 'Three', wait: 4 }] }
+t('the emails become Instantly’s one sequence: each step carries the wait before the NEXT email; follow-ups stay in the thread', () => {
+  const [seq] = T.toSequence(TPL, SIG)
+  assert.deepEqual(seq.steps.map(s => [s.type, s.delay, s.delay_unit, s.variants[0].subject]), [['email', 3, 'days', 'Hi from {{companyName}}'], ['email', 4, 'days', ''], ['email', 0, 'days', '']])
+  assert.match(seq.steps[0].variants[0].body, /^One \{\{firstName\}\}<br\/>\{\{board_link\}\}<br\/><br\/>Best,<br\/>Zach<br\/><br\/>Zach Goldstein<br\/>/)
+})
+t('an update keeps the waits Leo set in Instantly', () => {
+  const theirs = [{ steps: [{ type: 'email', delay: 2, delay_unit: 'days', variants: [{ subject: 'old', body: 'old' }] }, { type: 'email', delay: 6, delay_unit: 'days', variants: [{ subject: '', body: 'old' }] }, { type: 'email', delay: 9, variants: [{ subject: '', body: 'old' }] }] }]
+  const [seq] = T.toSequence(TPL, '', theirs)
+  assert.deepEqual(seq.steps.map(s => s.delay), [2, 6, 0], 'his 2 and 6 days stay; nothing waits after the last email')
+  assert.equal(seq.steps[0].variants[0].body.startsWith('One {{firstName}}'), true, 'the words are the dashboard’s')
+  // A campaign with fewer emails: the new ones get the standard waits.
+  assert.deepEqual(T.toSequence(TPL, '', [{ steps: [theirs[0].steps[0]] }])[0].steps.map(s => s.delay), [2, 4, 0])
+  assert.deepEqual(T.toSequence(TPL, '', null)[0].steps.map(s => s.delay), [3, 4, 0])
+})
+t('Instantly’s sequence reads back as the same emails', () => {
+  const back = T.fromSequence(T.toSequence(TPL, SIG), SIG)
+  assert.deepEqual(back, TPL)
+  assert.equal(T.fromSequence([], SIG), null); assert.equal(T.fromSequence(null, SIG), null)
+  // The first enabled variant of a step is the one that's read.
+  const ab = [{ steps: [{ type: 'email', delay: 1, variants: [{ subject: 'off', body: 'off', v_disabled: true }, { subject: 'On {{companyName}}', body: 'Body' }] }] }]
+  assert.deepEqual(T.fromSequence(ab, ''), { subject: 'On (BRAND)', steps: [{ body: 'Body', wait: 0 }] })
+})
+t('a campaign matches when it would send the same words — whatever the markup, the footer or the waits', () => {
+  const sig = T.templateSig(TPL, SIG)
+  const messy = [{ steps: T.toSequence(TPL, SIG)[0].steps.map(st => ({ ...st, delay: 9, variants: [{ ...st.variants[0], body: '<div>' + st.variants[0].body.replace(/<br\/>/g, '<br>') + '</div>' }] })) }]
+  const theirs = T.fromSequence(messy, SIG)
+  assert.deepEqual(T.syncState({ mine: TPL, signature: SIG, linked: true, found: true, theirs, pushedSig: sig }), { state: 'match', newer: null, parts: null })
+  assert.equal(T.syncState({ mine: TPL, signature: SIG, linked: false, found: false, theirs: null }).state, 'none')
+  assert.equal(T.syncState({ mine: TPL, signature: SIG, linked: true, found: false, theirs: null }).state, 'gone')
+  assert.deepEqual(T.syncState({ mine: TPL, signature: SIG, linked: true, found: true, theirs: null }), { state: 'empty', newer: 'dashboard', parts: null })
+})
+t('when they differ: which part, and whose copy changed last', () => {
+  const sig = T.templateSig(TPL, '')
+  const st = (mine, theirs, pushedSig = sig) => T.syncState({ mine, signature: '', linked: true, found: true, theirs, pushedSig })
+  const first = { ...TPL, steps: [{ body: 'One, rewritten (BOARD)', wait: 0 }, TPL.steps[1], TPL.steps[2]] }
+  const follow = { ...TPL, steps: [TPL.steps[0], { body: 'Two, rewritten', wait: 3 }, TPL.steps[2]] }
+  // Edited in Instantly since the dashboard last wrote it.
+  assert.deepEqual(st(TPL, first), { state: 'differs', newer: 'instantly', parts: { first: true, follow: false } })
+  assert.deepEqual(st(TPL, follow), { state: 'differs', newer: 'instantly', parts: { first: false, follow: true } })
+  // Edited on Templates since: the campaign still says what was sent there.
+  assert.deepEqual(st(first, TPL), { state: 'differs', newer: 'dashboard', parts: { first: true, follow: false } })
+  assert.deepEqual(st(follow, TPL), { state: 'differs', newer: 'dashboard', parts: { first: false, follow: true } })
+  // A new subject is the first email's; a follow-up gone in Instantly is the follow-ups'.
+  assert.deepEqual(st({ ...TPL, subject: 'New' }, TPL).parts, { first: true, follow: false })
+  assert.deepEqual(st(TPL, { ...TPL, steps: TPL.steps.slice(0, 2) }).parts, { first: false, follow: true })
+  // Both changed, or a campaign the dashboard never wrote: nobody's is "newer".
+  assert.equal(st(first, follow).newer, null)
+  assert.equal(st(TPL, first, null).newer, null)
+})
+
+// ---- the campaign a key gets
 t('a new campaign is a draft-ready shape: Tue–Thu, Eastern, 30 a day, stops on reply, plain, no tracking', () => {
-  const c = T.campaignDraft('energy', T.toSequence(tpl, SIG))
+  const c = T.campaignDraft('energy', T.toSequence(TPL, SIG))
   assert.equal(c.name, 'SB cold · Energy drinks')
+  assert.equal(T.campaignDraft('rtd', []).name, 'SB cold · Beer, Seltzers & Canned Cocktails')
+  assert.equal(T.campaignDraft('general', []).name, 'SB cold · Everyone else')
   const sch = c.campaign_schedule.schedules[0]
-  assert.deepEqual(sch.days, { '0': false, '1': false, '2': true, '3': true, '4': true, '5': false, '6': false })
-  assert.deepEqual([sch.timing.from, sch.timing.to, sch.timezone], ['09:00', '17:00', 'America/Detroit'])
-  assert.deepEqual([c.daily_limit, c.stop_on_reply, c.stop_for_company, c.text_only, c.open_tracking, c.link_tracking], [30, true, true, true, false, false])
+  assert.deepEqual(Object.entries(sch.days).filter(([, on]) => on).map(([d]) => d), ['2', '3', '4'])
+  assert.equal(sch.timezone, 'America/Detroit')
+  assert.deepEqual([c.daily_limit, c.stop_on_reply, c.stop_for_company, c.text_only, c.open_tracking, c.link_tracking, c.insert_unsubscribe_header], [30, true, true, true, false, false, true])
   assert.equal(c.sequences[0].steps.length, 3)
-  assert.equal('email_list' in c, false, 'the inbox is Leo’s to attach')
-})
-
-t('a template fills for one person, as they’d read it', () => {
-  assert.equal(T.fillTemplate('Hi (NAME) at (BRAND), (TITLE): (BOARD)', { first: 'Ann', brand: 'Cold Co', title: 'VP', board: 'https://x/?code=A&p=B' }), 'Hi Ann at Cold Co, VP: https://x/?code=A&p=B')
-  assert.equal(T.fillTemplate('Hi (NAME) at (BRAND)', {}), 'Hi there at your brand')
 })
 
 // ---- the personal link

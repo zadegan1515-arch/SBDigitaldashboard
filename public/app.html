@@ -1698,7 +1698,30 @@
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
-  /* Outreach → Instantly (ins*): its own page. Reuses the Hunter card's table and tile pieces. */
+  /* Email → Templates (tpl*): a row per template, one open at a time (Leo, Nov 16 2026) */
+  .tpl-tools{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .tpl-tools input{width:280px;max-width:100%;padding:9px 12px;font-size:14.5px}
+  .tpl-h{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px}
+  .tpl-list{display:flex;flex-direction:column;gap:8px}
+  .tpl-item{padding:0;overflow:hidden}
+  .tpl-row{display:flex;gap:10px 16px;align-items:center;width:100%;padding:14px 18px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+  .tpl-row:hover{background:var(--surface-2)}
+  .tpl-name{font-size:16px;font-weight:650;color:var(--ink-1);flex:0 0 300px;max-width:45%}
+  .tpl-subj{font-size:14px;color:var(--ink-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tpl-tag{font-size:12.5px;font-weight:600;border-radius:99px;padding:3px 11px;border:1px solid var(--border);color:var(--ink-3);white-space:nowrap}
+  .tpl-tag.own{color:var(--good);border-color:rgba(62,207,142,.45)}
+  .tpl-tag.draft{color:var(--warn);border-color:rgba(232,182,76,.45)}
+  .tpl-chev{color:var(--ink-3);font-size:13px;width:14px;text-align:center}
+  .tpl-ed{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px 22px;padding:4px 18px 18px;border-top:1px solid var(--border)}
+  .tpl-ed label{display:block;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px}
+  .tpl-ed input,.tpl-ed textarea{width:100%;box-sizing:border-box;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:inherit;font-size:14.5px;line-height:1.5}
+  .tpl-ed textarea{min-height:330px;resize:vertical}
+  .tpl-pv{background:var(--surface-0);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:14.5px;line-height:1.5;color:var(--ink-1);white-space:pre-wrap;overflow-wrap:anywhere}
+  .tpl-pv b{display:block;margin-bottom:10px}
+  .tpl-btns{grid-column:1/-1;display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap}
+  .tpl-btns .fe-dim{margin-left:auto}
+  @media (max-width:900px){.tpl-ed{grid-template-columns:minmax(0,1fr)}.tpl-name{flex-basis:auto;max-width:none}.tpl-subj{display:none}.tpl-btns .fe-dim{margin-left:0;flex-basis:100%}}
+  /* Email → Instantly (ins*): its own page. Reuses the Hunter card's table and tile pieces. */
   .ins-linkbar{margin-top:18px;padding:12px 18px;display:flex;gap:12px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px;color:var(--ink-2)}
   .ins-linkbar b{color:var(--ink-1)}
   .ins-head{display:flex;gap:14px 24px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;margin-bottom:22px}
@@ -1721,7 +1744,6 @@
   .ins-gs{display:flex;flex-direction:column}
   .ins-g{display:grid;grid-template-columns:minmax(150px,.7fr) minmax(0,2.3fr) auto;gap:8px 18px;align-items:start;padding:12px 0;border-top:1px solid var(--border-soft)}
   .ins-g:first-child{border-top:none;padding-top:2px}
-  .ins-g.open{background:var(--accent-soft);margin:0 -12px;padding-left:12px;padding-right:12px;border-radius:10px;border-top-color:transparent}
   .ins-g-l{display:flex;flex-direction:column;gap:2px;min-width:0}
   .ins-g-l b{font-size:15px}
   .ins-g-st{display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap;font-size:13.5px}
@@ -1732,18 +1754,13 @@
   .ins-sigline{display:flex;gap:6px 10px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
   .ins-sig{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
   .ins-sig textarea{width:100%;max-width:520px;font:inherit;font-size:14px;line-height:1.5}
-  .ins-editor code{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:6px;padding:0 5px;font-size:12.5px;color:var(--ink-1)}
-  .ins-ed{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:14px}
-  @media (max-width:1000px){.ins-ed{grid-template-columns:minmax(0,1fr)}}
-  .ins-lab{display:block;font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:12px}
-  .ins-lab .inp{display:block;width:100%;margin-top:6px;font:inherit;font-size:14px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--ink-1);line-height:1.5}
-  .ins-lab textarea.inp{resize:vertical}
-  .ins-wait{font-weight:400;letter-spacing:0;text-transform:none;font-size:13px;color:var(--ink-2)}
-  .ins-wait input.inp{display:inline-block;width:64px;margin:0 4px;padding:3px 6px}
-  .ins-pvh{font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
-  .ins-mail{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:10px;margin-bottom:10px;overflow:hidden}
-  .ins-mail-h{padding:8px 12px;font-size:13px;font-weight:600;color:var(--ink-2);border-bottom:1px solid var(--border-soft)}
-  .ins-mail-b{padding:12px;font-size:14px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+  .ins-g-who{font-size:12.5px}
+  .ins-more{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
+  .ins-more select{width:auto;max-width:100%;padding:6px 10px;font-size:13.5px}
+  .tpl-tag.ins{color:var(--accent);border-color:rgba(124,156,255,.45)}
+  .tpl-item{scroll-margin-top:calc(var(--head-h, 176px) + 14px)}
+  .tpl-note{grid-column:1/-1;font-size:13.5px;color:var(--ink-2);margin:0}
+  .tpl-note.warn{color:var(--warn)}
   @media (max-width:1280px){.ins-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}.ins-go{grid-column:1/-1}}
   @media (max-width:640px){.ins-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
   .ins-tiles .su-tile{padding:16px 18px;background:var(--surface-1);border-color:var(--border)}
@@ -2848,6 +2865,7 @@
         <button class="nav-item" data-view="zachtab">Deals</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
+        <button class="nav-item" data-view="email-out">Email</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="audience">Audience</button>
         <button class="nav-item" data-view="operations">Operations</button>
@@ -3022,17 +3040,23 @@
 
     <!-- INSTANTLY — cold email through Instantly (Leo, Nov 16 2026: "make this its own tab and make it all cleaner"; ins*, src/lib/instantly.ts) -->
     <section class="view page" id="instantly">
-      <div class="eyebrow">Outreach</div>
+      <div class="eyebrow">Email</div>
       <div id="ins-card"></div>
+    </section>
+
+    <!-- EMAIL → TEMPLATES — one first email per category + the follow-ups every category shares (Leo, Nov 16 2026; tpl*, src/lib/email-templates.ts) -->
+    <section class="view page" id="templates">
+      <div class="eyebrow">Email</div>
+      <div id="tpl-body"></div>
     </section>
 
     <!-- EMAIL OUTREACH -->
     <section class="view page" id="email-out">
-      <div class="eyebrow">Outreach</div>
+      <div class="eyebrow">Email</div>
       <h1>Email outreach</h1>
       <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
       <div id="fe-card"></div>
-      <!-- Cold email through Instantly has its own tab (Outreach → Instantly); this points there. -->
+      <!-- Cold email through Instantly has its own tab (Email → Instantly); this points there. -->
       <div class="panel ins-linkbar" id="ins-link">
         <span><b>Got their emails?</b> They go out from your Instantly campaign — nothing is sent from the dashboard.</span>
         <button class="btn-solid" id="ins-open">Open Instantly →</button>
@@ -3935,7 +3959,10 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['discover', 'Discover'], ['clarify', 'Clarify']],
-  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['instantly', 'Instantly'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
+  // Email (Leo, Nov 16 2026: "keep the Outreach tab but then I want a tab that says Email … put the Email and
+  // Instantly tabs there … a Template tab under the Email tab"): its own top tab after Outreach.
+  'email-out': [['email-out', 'Email'], ['instantly', 'Instantly'], ['templates', 'Templates']],
   board: [['board', 'Overview'], ['talks', 'Board codes'], ['requests', 'Requests'], ['shows', 'Shows']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
@@ -3945,7 +3972,8 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', instantly: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
+  'email-out': 'email-out', instantly: 'email-out', templates: 'email-out',
+  outreach: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   zachtab: 'zachtab', tracker: 'zachtab', intalks: 'zachtab', pipeline: 'zachtab', sponsorships: 'zachtab',
   audience: 'audience', attendees: 'audience', segments: 'audience',
@@ -6339,7 +6367,7 @@ function ztPanelHtml(p) {
     var sent = [p.emailedAt ? 'Emailed ' + shortDate(p.emailedAt) : '', p.emailReplyAt ? 'They replied by email ' + shortDate(p.emailReplyAt) : '',
       p.liSentAt ? 'Replied on LinkedIn ' + shortDate(p.liSentAt) : ''].filter(Boolean).join(' · ');
     out = h('Schedule the call', sent ? esc(sent) : '') +
-      '<div class="zt-callout call">' + (p.emailReplyAt ? 'They answered by email: reply in that thread (Outreach → Email) to get a time. ' : '') +
+      '<div class="zt-callout call">' + (p.emailReplyAt ? 'They answered by email: reply in that thread (the Email tab) to get a time. ' : '') +
         'Once they give you a time, pick the day and tick it. The call then shows in Needs action today on the day.</div>' +
       '<div class="zt-acts">' +
         '<label class="zt-step zt-stepdate' + (ZT_DATE[id] ? ' done' : '') + '">Day' +
@@ -11249,11 +11277,11 @@ function loadBrand(brandId, focusContactId) {
     });
     var brandEmailWords = brandEmail ? emailWords(brandEmail.t) : null;
     var introControl = brandEmailWords
-      ? '<button class="btn-ghost" id="b-openemail" style="margin-left:auto" title="Open Outreach → Email' +
+      ? '<button class="btn-ghost" id="b-openemail" style="margin-left:auto" title="Open the Email tab' +
           (brandEmailWords.pending ? ' — review it there, then Send. Nothing goes out until you do.' : '') + '">' +
           'Email to ' + esc((brandEmail.t.contact.name || '').split(' ')[0]) + ' — ' +
           esc(brandEmailWords.what + ' ' + brandEmailWords.state) + ' →</button>'
-      : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in Outreach → Email. It does not send.">Draft intro email</button>';
+      : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in the Email tab. It does not send.">Draft intro email</button>';
     var outreach = b.targets.length
       ? '<div class="section-head" id="b-sec-outreach">Outreach <span class="n">' + esc(outreachCounts) + '</span>' +
         introControl + '</div>' +
@@ -11662,7 +11690,7 @@ function loadBrand(brandId, focusContactId) {
     if (di) di.onclick = function () {
       var btn = di; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
       api('draftBrandIntro', { brandId: b.id }).then(function (r) {
-        toast('Intro drafted to ' + r.contact + ' (' + r.to + ') — NOT sent. Review it and hit Send in Outreach → Email.');
+        toast('Intro drafted to ' + r.contact + ' (' + r.to + ') — NOT sent. Review it and hit Send in the Email tab.');
         loadBrand(b.id);
       }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft intro email'; });
     };
@@ -20636,6 +20664,18 @@ function feSheetBrands() {
   feRows().concat(feReady(), (d.domains || []).filter(feInCat)).forEach(function (r) { seen[r.brandId] = 1; });
   return Object.keys(seen).length;
 }
+// Every company still missing emails, once each: the brands on the people file (as the chips and the category
+// stand) and the brands with nobody on file — by category.
+function feCompanies() {
+  var d = FE.data, seen = {}, out = [];
+  if (!d) return out;
+  feRows().concat((d.domains || []).filter(feInCat)).forEach(function (r) {
+    if (seen[r.brandId]) return;
+    seen[r.brandId] = 1;
+    out.push({ brandId: r.brandId, brandName: r.brandName, category: r.category, domain: r.domain || null, company: r.company || r.brandName });
+  });
+  return feByCat(out);
+}
 function feFileName(kind, d) { return 'sb-' + kind + (FE.cat ? '-' + (FE.cat === '~' ? 'no-category' : FE.cat) : '') + '-' + d.today + '.csv'; }
 function feCsv(grid) {
   var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -20675,9 +20715,13 @@ function feRender() {
     return;
   }
   var c = d.counts, rows = feRows(), have = feReady();
-  // The brands with nobody on file, and their lines in the file: labels of one parent company share a line.
-  var domBrands = (d.domains || []).filter(feInCat).length;
-  var doms = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+  // Domain Search (Leo, Nov 16 2026: "lets do the domain search" — about a credit a company, and more people at
+  // each): every company still missing emails — the ones on the people file and the ones with nobody on file —
+  // one line each; labels of one parent company share a line.
+  var cos = feCompanies();
+  var domBrands = cos.length, domNobody = (d.domains || []).filter(feInCat).length;
+  var doms = feDomainLines(cos);
+  var domNoSite = cos.filter(function (r) { return !r.domain; }).length;
   var tl = feTally();
   var cats = '<option value="">All categories</option>' + feCats().map(function (o) {
     return '<option value="' + esc(o.key) + '"' + (FE.cat === o.key ? ' selected' : '') + '>' + esc(feCatName(o.key)) + ' (' + o.n + ')</option>';
@@ -20731,9 +20775,11 @@ function feRender() {
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
     '</div>' +
     (noDom ? '<div class="fe-dim">' + noDom + ' of them ' + (noDom === 1 ? 'has' : 'have') + ' no company website on file — Hunter looks ' + (noDom === 1 ? 'that one' : 'those') + ' up by company name.</div>' : '') +
-    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>' + plural(domBrands, 'brand') + '</b> not reached yet ' + (domBrands === 1 ? 'has' : 'have') + ' nobody on file to look up. ' +
-      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
+    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>Domain Search — ' + plural(domBrands, 'company', 'companies') + '</b> still missing emails' +
+      (domNobody ? ' (' + domNobody + ' with nobody on file)' : '') + '. ' +
+      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows at each. ' +
       (domBrands > doms.length ? (domBrands - doms.length) + (domBrands - doms.length === 1 ? ' shares' : ' share') + ' a line with a sister brand (one company, looked up once). ' : '') +
+      (domNoSite ? domNoSite + ' ' + (domNoSite === 1 ? 'has' : 'have') + ' no website on file and ' + (domNoSite === 1 ? 'goes' : 'go') + ' by name. ' : '') +
       '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
     (tl.total ? '<div class="fe-tally" id="fe-tally"><b>' + (FE.cat ? esc(feCatName(FE.cat)) + ' — ' + plural(tl.total, 'brand') : 'All ' + plural(tl.total, 'brand')) + ':</b> ' + spots.join(' · ') + '.</div>' : '') +
     (feSheetBrands() ? '<div class="fe-dim" id="fe-sheet"><button class="su-show" data-fe="sheet">Download every brand in one sheet (' + plural(feSheetBrands(), 'brand') + ')</button> — the people to look up, the ones with an email, and the brands with nobody, by category.</div>' : '') +
@@ -20914,7 +20960,7 @@ function feOnClick(e) {
     return;
   }
   if (a === 'domains' && d) {
-    var lines = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+    var lines = feDomainLines(feCompanies());
     if (!lines.length) return;
     feSaveFile(feFileName('brand-websites', d), lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
     toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');
@@ -20949,37 +20995,257 @@ function feOnChange(e) {
 }
 
 
+// ── Email → Templates ──────────────────────────────────────────────────────
+// Leo, Nov 16 2026: "a Template tab under the Email tab with templates and I
+// want you to separate by category". View `templates` (TPL / tpl*, .tpl- CSS;
+// rules in src/lib/email-templates.ts): the three emails every category
+// shares, then one first email per category, Top priority first. A row opens
+// its editor (one at a time): subject, body, a filled-in preview, Save, Copy,
+// Copy for Instantly ((NAME) / (BRAND) → Instantly's {{firstName}} /
+// {{companyName}}), Back to the standard text. Nothing sends or drafts from
+// here. Text typed but not saved survives every redraw (TPL.drafts).
+var TPL = { data: null, open: null, drafts: {}, q: '', busy: null, err: null };
+var TPL_SAMPLE = { name: 'Alex', brand: 'Liquid Sun', title: 'Head of Partnerships', board: 'https://shows.sboyagency.com/?code=ABCD-EFGH&p=K7Q2MX' };
+
+function loadTemplates() {
+  var again = showView('templates');
+  var box = document.getElementById('tpl-body');
+  if (!again || !TPL.data) { if (!TPL.data) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>'; }
+  var mine = viewTurn('templates');
+  return api('listEmailTemplates').then(function (d) {
+    TPL.data = d; TPL.err = null;
+    if (mine()) tplRender();
+  }).catch(function (e) {
+    TPL.err = e.message || String(e);
+    if (mine()) tplRender();
+  });
+}
+function tplAll() { return TPL.data ? TPL.data.general.concat(TPL.data.categories) : []; }
+function tplFind(key) { return tplAll().filter(function (t) { return t.key === key; })[0] || null; }
+function tplName(t) { return t.category ? (CAT_NAMES[t.category] || t.category) : t.label; }
+// What's in the boxes for a template: the unsaved text, else what's saved.
+function tplNow(t) { return TPL.drafts[t.key] || { subject: t.subject, body: t.body }; }
+function tplDirty(t) { var d = TPL.drafts[t.key]; return !!d && (d.subject !== t.subject || d.body !== t.body); }
+function tplFill(x) {
+  return String(x || '').replace(/\(NAME\)|\[Name\]/gi, TPL_SAMPLE.name).replace(/\(BRAND\)|\[Brand\]/gi, TPL_SAMPLE.brand)
+    .replace(/\(TITLE\)|\[Title\]/gi, TPL_SAMPLE.title).replace(/\(BOARD\)|\[Board\]/gi, TPL_SAMPLE.board);
+}
+function tplInstantly(x) {
+  return String(x || '').replace(/\(NAME\)|\[Name\]/gi, '{{firstName}}').replace(/\(BRAND\)|\[Brand\]/gi, '{{companyName}}')
+    .replace(/\(TITLE\)|\[Title\]/gi, '{{jobTitle}}').replace(/\(BOARD\)|\[Board\]/gi, '{{board_link}}');
+}
+// A first email (the shared one or a category's) carries the Show Board link.
+function tplIsFirst(t) { return t.key === 'intro' || t.key.indexOf('cat:') === 0; }
+function tplHasBoard(x) { return /\(BOARD\)|\[Board\]/i.test(String(x || '')); }
+// Does this template go into an Instantly campaign as it is (Email → Instantly)?
+function tplFeeds(t) { var i = t.instantly; return !!i && !!(i.campaign || i.campaigns); }
+// Where it goes in Instantly, in the row and under the editor.
+function tplInsTag(t) {
+  var i = t.instantly;
+  if (!i) return '';
+  if (i.campaign) return '<span class="tpl-tag ins" title="Its Instantly campaign">Instantly: ' + esc(i.campaign) + '</span>';
+  if (i.campaigns) return '<span class="tpl-tag ins">In ' + plural(i.campaigns, 'Instantly campaign') + '</span>';
+  return '';
+}
+function tplInsNote(t) {
+  var i = t.instantly, name = tplName(t);
+  if (i && i.campaign) return 'This is the first email of “' + esc(i.campaign) + '” in Instantly. After a change, Save &amp; update Instantly writes it there.';
+  if (i && i.campaigns) return 'Every Instantly campaign sends this after its first email (' + plural(i.campaigns, 'campaign') + '). After a change, Save &amp; update Instantly writes it into all of them.';
+  if (i && i.goesWith) return 'In Instantly, ' + esc(name) + ' brands get the <b>' + esc(i.label) + '</b> email' + (i.has ? '' : ' (once it has a campaign)') +
+    ' until this category has a campaign of its own — give it one on <button class="fe-link" data-tpl="toins">Instantly</button>.';
+  if (tplIsFirst(t)) return 'No Instantly campaign yet — create it on <button class="fe-link" data-tpl="toins">Instantly</button>.';
+  return 'No Instantly campaign uses it yet.';
+}
+function tplTag(t) {
+  if (tplDirty(t)) return '<span class="tpl-tag draft">Not saved</span>';
+  return t.own ? '<span class="tpl-tag own">Yours' + (t.at ? ' · ' + esc(shortDate(t.at)) : '') + '</span>' : '<span class="tpl-tag">Standard</span>';
+}
+function tplPreview(t) {
+  var n = tplNow(t);
+  return '<b>' + esc(tplFill(n.subject)) + '</b>' + esc(tplFill(n.body));
+}
+function tplItem(t) {
+  var open = TPL.open === t.key, n = tplNow(t), busy = TPL.busy === t.key;
+  var h = '<div class="panel tpl-item" data-tplitem="' + esc(t.key) + '">' +
+    '<button class="tpl-row" data-tpl="open" data-key="' + esc(t.key) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+      '<span class="tpl-name">' + esc(tplName(t)) + '</span>' +
+      '<span class="tpl-subj">' + esc(n.subject) + '</span>' +
+      tplInsTag(t) + '<span data-tpltag>' + tplTag(t) + '</span><span class="tpl-chev">' + (open ? '▾' : '▸') + '</span></button>';
+  if (open) {
+    h += '<div class="tpl-ed"><div>' +
+        '<label for="tpl-subject">Subject</label><input id="tpl-subject" data-tplin="subject" maxlength="200" value="' + esc(n.subject) + '">' +
+        '<label for="tpl-text">Email</label><textarea id="tpl-text" data-tplin="body" maxlength="8000">' + esc(n.body) + '</textarea>' +
+      '</div><div>' +
+        '<label>How it reads for ' + esc(TPL_SAMPLE.name) + ' at ' + esc(TPL_SAMPLE.brand) + '</label><div class="tpl-pv" id="tpl-pv">' + tplPreview(t) + '</div>' +
+      '</div><div class="tpl-btns">' +
+        '<button class="btn-solid" data-tpl="save"' + (tplDirty(t) && !busy ? '' : ' disabled') + '>' + (busy ? 'Saving…' : 'Save') + '</button>' +
+        (tplFeeds(t) ? '<button class="btn-ghost" data-tpl="saveins"' + (busy ? ' disabled' : '') + ' title="Saves it, then writes it into Instantly">Save &amp; update Instantly</button>' : '') +
+        '<button class="btn-ghost" data-tpl="copy">Copy</button>' +
+        '<button class="btn-ghost" data-tpl="copyins" title="(NAME) becomes {{firstName}}, (BRAND) becomes {{companyName}}, (BOARD) becomes {{board_link}}">Copy for Instantly</button>' +
+        (tplDirty(t) ? '<button class="btn-ghost" data-tpl="discard">Discard changes</button>' : '') +
+        (t.own ? '<button class="btn-ghost" data-tpl="reset">Back to the standard text</button>' : '') +
+        '<span class="fe-dim">(NAME) = their first name · (BRAND) = the brand' + (tplIsFirst(t) ? ' · (BOARD) = their own Show Board link' : '') + '</span>' +
+      '</div>' +
+      (tplIsFirst(t) ? '<p class="tpl-note warn" id="tpl-noboard"' + (tplHasBoard(n.body) ? ' hidden' : '') + '>No (BOARD) in this email — nobody would get their Show Board link.</p>' : '') +
+      '<p class="tpl-note" id="tpl-insnote">' + tplInsNote(t) + '</p>' +
+      '</div>';
+  }
+  return h + '</div>';
+}
+function tplRender() {
+  var box = document.getElementById('tpl-body');
+  if (!box) return;
+  var head = '<div class="ins-head"><div><h1>Templates</h1>' +
+    '<div class="ins-sub">One first email per category, plus the follow-ups every category shares. Instantly’s campaigns send these words; nothing is sent from here.</div></div></div>';
+  if (!TPL.data) {
+    box.innerHTML = head + '<div class="panel"><div class="empty"><p>' + (TPL.err ? 'Couldn’t read the templates: ' + esc(TPL.err) + ' <button class="su-show" data-tpl="retry">Try again</button>' : 'Loading…') + '</p></div></div>';
+    return;
+  }
+  var q = TPL.q.trim().toLowerCase();
+  var hit = function (t) { return !q || tplName(t).toLowerCase().indexOf(q) >= 0 || t.key === TPL.open; };
+  var h = head + '<div class="tpl-tools"><input class="inp" id="tpl-q" type="search" placeholder="Find a category…" value="' + esc(TPL.q) + '" aria-label="Find a category">' +
+    '<span class="fe-dim" id="tpl-count"></span></div>';
+  var gen = TPL.data.general.filter(hit);
+  if (gen.length) h += '<div class="tpl-h">Every category</div><div class="tpl-list">' + gen.map(tplItem).join('') + '</div>';
+  var shown = 0;
+  ['top', 'middle', 'low', 'skip'].forEach(function (p) {
+    var rows = TPL.data.categories.filter(function (t) { return (t.priority || 'middle') === p && hit(t); });
+    if (!rows.length) return;
+    shown += rows.length;
+    h += '<div class="tpl-h">By category · ' + SD_PRIO_WORD[p] + ' priority</div><div class="tpl-list">' + rows.map(tplItem).join('') + '</div>';
+  });
+  if (!gen.length && !shown) h += '<div class="panel" style="margin-top:14px"><div class="empty"><p>No category called “' + esc(TPL.q) + '”.</p></div></div>';
+  box.innerHTML = h;
+  var own = TPL.data.categories.filter(function (t) { return t.own; }).length;
+  document.getElementById('tpl-count').textContent = TPL.data.categories.length + ' categories · ' + (own ? own + ' with your own text' : 'all on the standard text');
+  // Opened from a campaign's row on Instantly: bring its email into view, once.
+  if (TPL.jump && TPL.open) {
+    var at = box.querySelector('[data-tplitem="' + TPL.open + '"]');
+    TPL.jump = false;
+    if (at && at.scrollIntoView) at.scrollIntoView({ block: 'start' });
+  }
+}
+// Typing: keep the text, refresh the preview, the tag and Save — no redraw.
+function tplOnInput(e) {
+  if (e.target.id === 'tpl-q') {
+    TPL.q = e.target.value;
+    var at = e.target.selectionStart;
+    tplRender();
+    var b = document.getElementById('tpl-q'); b.focus(); try { b.setSelectionRange(at, at); } catch (x) {}
+    return;
+  }
+  var f = e.target.getAttribute && e.target.getAttribute('data-tplin');
+  var t = f && tplFind(TPL.open);
+  if (!t) return;
+  var d = TPL.drafts[t.key] || { subject: t.subject, body: t.body };
+  d[f] = e.target.value;
+  TPL.drafts[t.key] = d;
+  if (!tplDirty(t)) delete TPL.drafts[t.key];
+  var item = e.target.closest('[data-tplitem]');
+  document.getElementById('tpl-pv').innerHTML = tplPreview(t);
+  item.querySelector('[data-tpltag]').innerHTML = tplTag(t);
+  item.querySelector('.tpl-subj').textContent = tplNow(t).subject;
+  var save = item.querySelector('[data-tpl="save"]');
+  save.disabled = !tplDirty(t);
+  var nb = document.getElementById('tpl-noboard');
+  if (nb) nb.hidden = tplHasBoard(tplNow(t).body);
+  var hasDiscard = !!item.querySelector('[data-tpl="discard"]');
+  if (hasDiscard !== tplDirty(t)) {
+    // The Discard button comes and goes: redraw this row, keep the cursor.
+    var id = e.target.id, pos = e.target.selectionStart, top = e.target.scrollTop;
+    tplRender();
+    var el = document.getElementById(id);
+    if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (x) {} el.scrollTop = top; }
+  }
+}
+function tplSave(t, reset) {
+  var n = tplNow(t);
+  TPL.busy = t.key; tplRender();
+  return api('saveEmailTemplate', reset ? { key: t.key, reset: true } : { key: t.key, subject: n.subject, body: n.body }).then(function (row) {
+    delete TPL.drafts[t.key];
+    ['subject', 'body', 'own', 'at', 'by'].forEach(function (k) { t[k] = row[k]; });
+    toast(reset ? tplName(t) + ' is back on the standard text' : row.own ? 'Saved — ' + tplName(t) : 'Saved — same as the standard text');
+  }).catch(function (e) { toast('Couldn’t save: ' + (e.message || e)); })
+    .then(function () { TPL.busy = null; tplRender(); });
+}
+// Save (when something changed), then write it into Instantly: its own
+// campaign, or — a follow-up every campaign shares — all of them. Asked first.
+function tplSaveToInstantly(t) {
+  var i = t.instantly || {};
+  var q = i.campaigns ? 'Write this into all ' + plural(i.campaigns, 'Instantly campaign') + '?\n\nEvery campaign’s emails are replaced with what Templates says now.'
+    : 'Replace the emails in Instantly’s “' + i.campaign + '” with what Templates says now?';
+  if (!confirm(q)) return;
+  var n = tplNow(t), dirty = tplDirty(t);
+  TPL.busy = t.key; tplRender();
+  var saved = dirty ? api('saveEmailTemplate', { key: t.key, subject: n.subject, body: n.body }).then(function (row) {
+    delete TPL.drafts[t.key];
+    ['subject', 'body', 'own', 'at', 'by'].forEach(function (k) { t[k] = row[k]; });
+  }) : Promise.resolve();
+  return saved.then(function () {
+    return api('pushInstantlyTemplate', i.campaigns ? { all: true } : { key: i.key });
+  }).then(function (r) {
+    toast((dirty ? 'Saved — ' : '') + plural((r.pushed || []).length, 'Instantly campaign') + ' updated');
+  }).catch(function (e) { toast((e.message || String(e))); })
+    .then(function () { TPL.busy = null; tplRender(); });
+}
+function tplOnClick(e) {
+  var b = e.target.closest('[data-tpl]');
+  if (!b) return;
+  var act = b.getAttribute('data-tpl');
+  if (act === 'retry') return loadTemplates();
+  if (act === 'toins') return gotoView('instantly');
+  if (act === 'open') {
+    var key = b.getAttribute('data-key');
+    TPL.open = TPL.open === key ? null : key;
+    return tplRender();
+  }
+  var t = tplFind(TPL.open);
+  if (!t) return;
+  var n = tplNow(t);
+  if (act === 'save') return tplSave(t, false);
+  if (act === 'saveins') return tplSaveToInstantly(t);
+  if (act === 'copy') return ztCopy(n.subject + '\n\n' + n.body, 'Copied — ' + tplName(t));
+  if (act === 'copyins') return ztCopy(tplInstantly(n.subject) + '\n\n' + tplInstantly(n.body), 'Copied with Instantly’s tags — paste it into the campaign');
+  if (act === 'discard') { delete TPL.drafts[t.key]; return tplRender(); }
+  if (act === 'reset') {
+    if (!confirm('Put “' + tplName(t) + '” back on the standard text?\n\nYour saved version goes:\n\n' + t.subject + '\n\n' + t.body.slice(0, 400) + (t.body.length > 400 ? '…' : ''))) return;
+    return tplSave(t, true);
+  }
+}
+(function () {
+  var v = document.getElementById('templates');
+  if (!v) return;
+  v.addEventListener('click', tplOnClick);
+  v.addEventListener('input', tplOnInput);
+})();
+
 // ── Cold email through Instantly ───────────────────────────────────────────
 // Leo, Nov 16 2026: "get the emails from Hunter, connect that to Instantly, and
 // run cold outreach through Instantly … build it connected", then "make this
 // its own tab and make it all cleaner", then "for energy drinks I'll have one
 // template, for alcohol companies … one template, for nicotine … on each email
 // … attach the [Show Board] with the brand's own personal link … both on the
-// dashboard and instantly, they should be connected". Outreach → Instantly
+// dashboard and instantly, they should be connected". Email → Instantly
 // (view `instantly`, INS / ins*; rules in src/lib/instantly.ts and
 // src/lib/cold-templates.ts). The dashboard sends nothing: Review & send lists
 // everyone with an address who hasn't been emailed, ticked or not; Send hands
-// the ticked ones to the Instantly campaign of their brand's template, each
-// with their own Show Board link, and Instantly emails them. A template is
-// edited here and written into its campaign; the page reads the campaign back
-// and says when the two differ. What Instantly did comes back (sent, opened
-// the board, replied, bounced, unsubscribed) — live through its webhook, and
-// by the sync. Anyone who stops or answers here is taken back out.
-var INS = { data: null, err: '', plan: null, planTurn: 0, pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false, all: false, tab: '',
-  edit: null, sig: null, more: {} };
+// the ticked ones to the Instantly campaign their brand's category goes to,
+// each with their own Show Board link, and Instantly emails them. The emails
+// are written on Email → Templates; a campaign's row here writes them into
+// Instantly, reads the campaign back and says when the two differ. What
+// Instantly did comes back (sent, opened the board, replied, bounced,
+// unsubscribed) — live through its webhook, and by the sync. Anyone who stops
+// or answers here is taken back out.
+var INS = { data: null, err: '', plan: null, planTurn: 0, pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false, all: false, tab: '', sig: null };
 var INS_ROWS = 150;
 var INS_KEYS_URL = 'https://app.instantly.ai/app/settings/integrations';
 var INS_SYNC_EVERY = 10 * 60 * 1000;
 var INS_FOLDS = [['opened', 'Opened the board'], ['replied', 'Replied'], ['unsubscribed', 'Unsubscribed'], ['bounced', 'Bounced'], ['removed', 'Taken out']];
-var INS_STEP_NAMES = ['First email', 'Follow-up 1', 'Follow-up 2'];
-var INS_SAMPLE_BOARD = 'https://shows.sboyagency.com/?code=ABCD-EFGH&p=K7Q2MX';
 
 function insShell() {
   var box = document.getElementById('ins-card');
   if (!box || box.firstChild) return box;
-  // The editor has a box of its own: nothing else on the page redraws it, so
-  // what's being typed is never lost to a background read.
-  box.innerHTML = '<div id="ins-top"></div><div id="ins-edit"></div><div id="ins-pv"></div><div id="ins-people"></div>';
+  box.innerHTML = '<div id="ins-top"></div><div id="ins-pv"></div><div id="ins-people"></div>';
   box.addEventListener('click', insOnClick);
   box.addEventListener('change', insOnChange);
   box.addEventListener('input', insOnInput);
@@ -20987,7 +21253,8 @@ function insShell() {
   return box;
 }
 
-// Outreach → Instantly (its own tab).
+// Email → Instantly (its own tab — Leo, Nov 16 2026: "make this its own
+// tab and make it all cleaner").
 function loadInstantly() {
   showView('instantly');
   return insLoad();
@@ -21049,15 +21316,7 @@ function insSyncWords(r) {
   return bits.length ? 'Synced — ' + bits.join(', ') : 'Synced — nothing new';
 }
 
-function insRender() {
-  insRenderTop();
-  // An open editor is left as it is (the cursor and what's typed stay); only
-  // its button follows whether the template has a campaign now.
-  var g = INS.edit && insGroup(INS.edit.key), btn = document.getElementById('ins-savepush');
-  if (g && btn && document.querySelector('#ins-edit .ins-editor')) btn.textContent = g.linked ? 'Save & update Instantly' : 'Save & create in Instantly';
-  else insRenderEdit();
-  insRenderPv(); insRenderPeople();
-}
+function insRender() { insRenderTop(); insRenderPv(); insRenderPeople(); }
 
 function insHead(right) {
   return '<div class="ins-head"><div><h1>Instantly</h1>' +
@@ -21066,24 +21325,30 @@ function insHead(right) {
 }
 function insGroups() { var d = INS.data; return (d && d.templates && d.templates.groups) || []; }
 function insGroup(key) { return insGroups().filter(function (g) { return g.key === key; })[0] || null; }
-// How many people could go with each template, from the send list.
+// How many people could go to each campaign, from the send list.
 function insReadyOf(key) {
   var c = INS.plan && (INS.plan.campaigns || []).filter(function (x) { return x.group === key; })[0];
   return c ? c.people : (INS.plan ? 0 : null);
 }
+// Which part of a campaign no longer says what the dashboard says.
+function insPartWords(g) {
+  var p = g.parts || {};
+  return p.first && p.follow ? 'its first email and its follow-ups' : p.follow ? 'its follow-ups' : 'its first email';
+}
+var INS_NEW_CAMP = 'It’s made as a draft: nothing goes out until you attach your inbox and start it in Instantly.';
 
-// One row per template: who gets it, its Instantly campaign, and whether
-// the campaign says what the dashboard says.
+// One row per campaign: whose brands go to it, its Instantly campaign, and
+// whether the campaign says what Email → Templates says.
 function insGroupRow(g) {
   var d = INS.data, n = insReadyOf(g.key), camp = g.campaign;
   var busy = INS.busy === 'tpl:' + g.key;
   var dis = INS.busy ? ' disabled' : '';
   var status, acts = '';
   if (g.state === 'match') {
-    status = '<span class="ins-pill on">Matches Instantly</span>';
+    status = '<span class="ins-pill on">Matches Templates</span>';
   } else if (g.state === 'differs') {
-    status = '<span class="ins-pill off">Differs from Instantly</span>' +
-      '<span class="fe-dim">' + (g.newer === 'instantly' ? 'It was changed in Instantly.' : g.newer === 'dashboard' ? 'The dashboard’s copy is newer.' : '') + '</span>';
+    status = '<span class="ins-pill off">Differs from Templates</span>' +
+      '<span class="fe-dim">' + (g.newer === 'instantly' ? 'Changed in Instantly: ' : g.newer === 'dashboard' ? 'Changed on Templates: ' : 'Not the same: ') + insPartWords(g) + '.</span>';
     acts = '<button class="su-show" data-ins="tpl-push" data-g="' + g.key + '"' + dis + '>Update Instantly</button>' +
       '<button class="su-show" data-ins="tpl-pull" data-g="' + g.key + '"' + dis + '>Use Instantly’s version</button>';
   } else if (g.state === 'empty') {
@@ -21106,13 +21371,30 @@ function insGroupRow(g) {
           '<span class="fe-dim">' + (camp.sends ? 'sending' : 'nothing goes out until you start it in Instantly') + '</span>' : '') + '</div>' +
       (camp && camp.warn.length ? '<ul class="ins-warns">' + camp.warn.map(function (w) { return '<li>' + esc(w) + '</li>'; }).join('') + '</ul>' : '')
     : '';
-  return '<div class="ins-g' + (INS.edit && INS.edit.key === g.key ? ' open' : '') + '" data-insg="' + g.key + '">' +
+  // Whose brands: a family's other categories, or everyone with no campaign of their own.
+  var who = g.key === 'general' ? 'every category with no campaign of its own'
+    : (g.also || []).length ? 'with ' + g.also.map(function (c) { return CAT_NAMES[c] || c; }).join(', ') : '';
+  return '<div class="ins-g" data-insg="' + g.key + '">' +
     '<div class="ins-g-l"><b>' + esc(g.label) + '</b>' +
-      '<span class="fe-dim">' + (n == null ? '' : plural(n, 'person', 'people') + ' ready') + (g.edited ? '' : ' · Claude’s draft') + '</span></div>' +
+      '<span class="fe-dim" data-insready>' + (n == null ? '' : plural(n, 'person', 'people') + ' ready') + '</span>' +
+      (who ? '<span class="fe-dim ins-g-who">' + esc(who) + '</span>' : '') + '</div>' +
     '<div class="ins-g-m"><div class="ins-g-st">' + (busy ? '<span class="fe-dim">Working…</span>' : status + acts) + '</div>' + campLine +
       (!g.hasBoard ? '<div class="fe-warn">Its first email has no (BOARD) — nobody would get their Show Board link.</div>' : '') + '</div>' +
-    '<div class="ins-g-r"><button class="btn-ghost" data-ins="tpl-edit" data-g="' + g.key + '">' + (INS.edit && INS.edit.key === g.key ? 'Editing…' : 'Edit template') + '</button></div>' +
+    '<div class="ins-g-r"><button class="btn-ghost" data-ins="tpl-edit" data-g="' + g.key + '" title="Opens its first email on Templates">Edit email</button></div>' +
   '</div>';
+}
+// Under the rows: any other category can be given a campaign of its own.
+function insOthersHtml() {
+  var d = INS.data, others = (d.templates && d.templates.others) || [];
+  if (d.error || !others.length) return '';
+  var by = (INS.plan && INS.plan.byCategory) || {};
+  return '<div class="ins-more"><select class="inp ins-own" id="ins-own"' + (INS.busy ? ' disabled' : '') + ' aria-label="Give a category its own campaign">' +
+    '<option value="">Give another category its own campaign…</option>' +
+    others.map(function (o) {
+      var goes = insGroup(o.goesWith);
+      return '<option value="' + esc(o.key) + '">' + esc(o.label) + (by[o.key] ? ' · ' + by[o.key] + ' ready' : '') + ' — now goes with ' + esc(goes ? goes.label : o.goesWith) + '</option>';
+    }).join('') + '</select>' +
+    '<span class="fe-dim">Until it has one, a category’s brands get its family’s email, or the Everyone else one.</span></div>';
 }
 
 function insRenderTop() {
@@ -21149,24 +21431,28 @@ function insRenderTop() {
       : 'Not read yet') + '</span>';
   var sig = d.templates ? d.templates.signature : '';
   var sigLine = INS.sig != null
-    ? '<div class="ins-sig"><textarea class="inp" id="ins-sigbox" rows="3" aria-label="Signature">' + esc(INS.sig) + '</textarea>' +
-        '<div class="fe-foot"><button class="btn-solid" data-ins="sig-save"' + (INS.busy ? ' disabled' : '') + '>Save signature</button><button class="btn-ghost" data-ins="sig-cancel">Cancel</button>' +
-        '<span class="fe-dim">It goes under every email. Add your mailing address here — US law asks for one in a cold email.</span></div></div>'
-    : '<div class="ins-sigline" id="ins-sigline"><span class="fe-dim">Signature under every email:</span> <span>' + esc(sig.split('\n').join(' · ')) + '</span>' +
-        '<button class="su-show" data-ins="sig-edit">Edit</button></div>';
+    ? '<div class="ins-sig"><textarea class="inp" id="ins-sigbox" rows="3" aria-label="Footer under every email" placeholder="Zach Goldstein&#10;Co-CEO, SB Agency&#10;Your mailing address">' + esc(INS.sig) + '</textarea>' +
+        '<div class="fe-foot"><button class="btn-solid" data-ins="sig-save"' + (INS.busy ? ' disabled' : '') + '>Save footer</button><button class="btn-ghost" data-ins="sig-cancel">Cancel</button>' +
+        '<span class="fe-dim">It goes under every email Instantly sends. A mailing address belongs here — US law asks for one in a cold email.</span></div></div>'
+    : '<div class="ins-sigline" id="ins-sigline"><span class="fe-dim">Footer under every email:</span> <span>' + (sig ? esc(sig.split('\n').join(' · ')) : 'none yet') + '</span>' +
+        '<button class="su-show" data-ins="sig-edit">' + (sig ? 'Edit' : 'Add one') + '</button></div>';
+  // Several campaigns behind the dashboard (a shared follow-up changed): one click for all.
+  var behind = insGroups().filter(function (g) { return g.state === 'differs' && g.newer !== 'instantly'; });
   var tile = function (h, n, sub, id) {
     return '<div class="su-tile"><div class="su-h">' + h + '</div><div class="su-big" id="' + id + '">' + n + '</div><div class="su-sub">' + sub + '</div></div>';
   };
   var canSend = !d.error && ready > 0;
   var goSub = ready == null ? 'counting who has an email…'
-    : ready === 0 ? (noCamp ? noCamp + ' waiting on a campaign — create it under Templates' : 'nobody waiting — bring a Hunter file back on the Email tab')
+    : ready === 0 ? (noCamp ? noCamp + ' waiting on a campaign — create it above' : 'nobody waiting — bring a Hunter file back on the Email tab')
     : 'have an email, never emailed' + (plan.counts.fresh ? ' · ' + plan.counts.fresh + ' at brands not reached yet' : '') + (noCamp ? ' · ' + noCamp + ' more waiting on a campaign' : '');
   // A background read never takes the cursor out of the signature box.
   var act = document.activeElement, caret = act && act.id === 'ins-sigbox' ? [act.selectionStart, act.selectionEnd] : null;
   top.innerHTML = insHead(right) +
-    '<div class="panel ins-sec" id="ins-tpls"><div class="ins-sech">Templates &amp; campaigns</div>' +
+    '<div class="panel ins-sec" id="ins-tpls"><div class="ins-backh"><span class="ins-sech">Campaigns</span>' +
+        '<span class="fe-dim">Each sends its first email, then the two follow-ups, as written on <button class="fe-link" data-ins="tpl-open">Templates</button>.</span>' +
+        (behind.length > 1 && !d.error ? '<button class="su-show" data-ins="tpl-pushall" id="ins-pushall"' + (INS.busy ? ' disabled' : '') + '>Update all ' + behind.length + ' in Instantly</button>' : '') + '</div>' +
       (d.error ? '<div class="fe-warn" id="ins-err">' + esc(d.error) + ' <button class="su-show" data-ins="retry">Try again</button></div>' : '') +
-      '<div class="ins-gs">' + insGroups().map(insGroupRow).join('') + '</div>' + sigLine +
+      '<div class="ins-gs">' + insGroups().map(insGroupRow).join('') + '</div>' + insOthersHtml() + sigLine +
     '</div>' +
     '<div class="ins-tiles">' +
       '<div class="su-tile ins-go"><div><div class="su-h">Ready to send</div><div class="su-big" id="ins-ready">' + (ready == null ? '…' : ready) + '</div>' +
@@ -21189,124 +21475,68 @@ function insRenderTop() {
   if (sbox) { sbox.focus(); try { sbox.setSelectionRange(caret[0], caret[1]); } catch (e) {} }
 }
 
-// ---- a template, being edited ------------------------------------------
-// Opened from its row. Its fields are kept in INS.edit as they're typed, and
-// its box is redrawn only when it opens, closes or gains an email.
+// ---- a campaign's emails, to and from Instantly --------------------------
+// The words are edited on Email → Templates: Edit email opens the row there.
 function insEditOpen(key) {
   var g = insGroup(key);
-  if (!g) return;
-  INS.edit = { key: key, subject: g.subject, steps: g.steps.map(function (s) { return { body: s.body, wait: s.wait }; }), saving: false };
-  insRenderTop(); insRenderEdit();
-  var box = document.getElementById('ins-edit');
-  if (box && box.scrollIntoView) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
-}
-// Someone to show the template to: the first person on the send list who'd
-// get it, else a made-up one.
-function insSampleFor(key) {
-  var l = INS.plan && (INS.plan.lines || []).filter(function (x) { return x.tpl === key && (x.action === 'send' || x.action === 'nocamp'); })[0];
-  return l ? { first: String(l.name || '').split(/\s+/)[0], brand: l.brandName, title: l.title || '', real: true } : { first: 'Alex', brand: 'Sample Brand', title: 'Head of Partnerships', real: false };
-}
-function insFill(text, who) {
-  return String(text || '').replace(/\(NAME\)|\[Name\]/g, who.first || 'there').replace(/\(BRAND\)|\[Brand\]/g, who.brand || 'your brand')
-    .replace(/\(TITLE\)|\[Title\]/g, who.title || '').replace(/\(BOARD\)|\[Board\]/g, INS_SAMPLE_BOARD);
-}
-function insPreviewHtml() {
-  var e = INS.edit, d = INS.data;
-  if (!e) return '';
-  var who = insSampleFor(e.key), sig = (d.templates && d.templates.signature) || '';
-  return '<div class="ins-pvh">As ' + esc(who.first) + ' at ' + esc(who.brand) + ' would read it' + (who.real ? '' : ' (a made-up person)') + '</div>' +
-    e.steps.map(function (s, i) {
-      return '<div class="ins-mail"><div class="ins-mail-h">' + (i === 0 ? 'Subject: ' + esc(insFill(e.subject, who)) : INS_STEP_NAMES[i] + ' · ' + plural(s.wait, 'day') + ' later, same thread') + '</div>' +
-        '<div class="ins-mail-b">' + esc(insFill(s.body, who) + (sig ? '\n' + sig : '')) + '</div></div>';
-    }).join('');
-}
-function insRenderEdit() {
-  var box = document.getElementById('ins-edit');
-  if (!box) return;
-  var e = INS.edit, g = e && insGroup(e.key);
-  if (!e || !g) { box.innerHTML = ''; return; }
-  var noBoard = !/\(BOARD\)|\[Board\]/.test(e.steps[0].body);
-  box.innerHTML = '<div class="panel ins-sec ins-editor"><div class="ins-sech">Template · ' + esc(g.label) + '</div>' +
-    '<div class="fe-dim">Goes to brands filed under: ' + (g.categories.length ? esc(g.categories.map(function (c) { return CAT_NAMES[c] || c; }).join(', ')) : 'every other category') +
-      '. Write <code>(NAME)</code> <code>(BRAND)</code> <code>(TITLE)</code> and <code>(BOARD)</code> — each person’s own Show Board link.</div>' +
-    '<div class="ins-ed">' +
-      '<div class="ins-ed-l">' +
-        '<label class="ins-lab">Subject<input class="inp" id="ins-subj" data-insf="subject" value="' + esc(e.subject) + '" maxlength="200"></label>' +
-        e.steps.map(function (s, i) {
-          return '<label class="ins-lab">' + INS_STEP_NAMES[i] +
-            (i ? ' <span class="ins-wait">sent <input class="inp" type="number" min="1" max="60" data-insf="wait" data-i="' + i + '" value="' + s.wait + '" aria-label="Days after the email before"> days after the one before' +
-              ' · <button class="su-show" data-ins="tpl-dropstep" data-i="' + i + '" type="button">Remove</button></span>' : '') +
-            '<textarea class="inp" rows="' + (i ? 6 : 14) + '" data-insf="body" data-i="' + i + '">' + esc(s.body) + '</textarea></label>';
-        }).join('') +
-        (e.steps.length < 3 ? '<button class="su-show" data-ins="tpl-addstep" type="button">+ Add a follow-up</button>' : '') +
-        '<div class="fe-warn" id="ins-noboard"' + (noBoard ? '' : ' hidden') + '>The first email has no (BOARD) — nobody would get their Show Board link.</div>' +
-      '</div>' +
-      '<div class="ins-ed-r" id="ins-edpv">' + insPreviewHtml() + '</div>' +
-    '</div>' +
-    '<div class="fe-foot">' +
-      '<button class="btn-solid" data-ins="tpl-savepush" id="ins-savepush"' + (e.saving ? ' disabled' : '') + '>' + (g.linked ? 'Save &amp; update Instantly' : 'Save &amp; create in Instantly') + '</button>' +
-      '<button class="btn-ghost" data-ins="tpl-save"' + (e.saving ? ' disabled' : '') + '>Save here only</button>' +
-      (g.edited ? '<button class="su-show" data-ins="tpl-reset">Back to Claude’s draft</button>' : '') +
-      '<button class="btn-ghost" data-ins="tpl-close">Close</button>' +
-      '<span class="fe-dim">The signature is added under each email. Nothing is sent from here.</span>' +
-    '</div></div>';
+  TPL.open = g ? g.first : null; TPL.q = ''; TPL.jump = true;
+  gotoView('templates');
 }
 function insOnInput(ev) {
-  var t = ev.target, f = t.getAttribute && t.getAttribute('data-insf'), e = INS.edit;
-  if (t.id === 'ins-sigbox') { INS.sig = t.value; return; }
-  if (!f || !e) return;
-  var i = Number(t.getAttribute('data-i')) || 0;
-  if (f === 'subject') e.subject = t.value;
-  if (f === 'body') e.steps[i].body = t.value;
-  if (f === 'wait') e.steps[i].wait = Math.max(1, Math.min(60, Math.round(Number(t.value)) || 1));
-  var pv = document.getElementById('ins-edpv');
-  if (pv) pv.innerHTML = insPreviewHtml();
-  var nb = document.getElementById('ins-noboard');
-  if (nb) nb.hidden = /\(BOARD\)|\[Board\]/.test(e.steps[0].body);
+  if (ev.target.id === 'ins-sigbox') INS.sig = ev.target.value;
 }
-// Save the open template; with `push`, write it into its Instantly campaign too.
-function insTplSave(push) {
-  var e = INS.edit;
-  if (!e || e.saving) return;
-  var g = insGroup(e.key);
-  if (push && g && !g.linked && !confirm('Create a new campaign in Instantly for ' + g.label + '?\n\nIt’s made as a draft: nothing goes out until you attach your inbox and start it in Instantly.')) return;
-  e.saving = true; insRenderEdit();
-  api('saveInstantlyTemplate', { group: e.key, subject: e.subject, steps: e.steps, push: !!push }).then(function (r) {
-    var made = r.pushed && r.pushed[0];
-    toast(made ? (made.created ? 'Saved — “' + made.campaign.name + '” made in Instantly as a draft' : 'Saved — Instantly’s “' + made.campaign.name + '” updated') : 'Saved on the dashboard');
-    INS.edit = null;
-    insRenderEdit();
-    return insLoad(true);
-  }).catch(function (err) {
-    e.saving = false; insRenderEdit();
-    toast(err.message || 'Couldn’t save');
-  });
-}
-// From a row: write the dashboard's copy into Instantly, or take Instantly's.
+// From a row: write the dashboard's emails into Instantly, or take Instantly's.
 function insTplRow(key, what) {
   var g = insGroup(key);
   if (!g || INS.busy) return;
-  if (what === 'push' && !g.linked && !confirm('Create a new campaign in Instantly for ' + g.label + '?\n\nIt’s made as a draft: nothing goes out until you attach your inbox and start it in Instantly.')) return;
-  if (what === 'push' && g.state === 'differs' && !confirm('Replace the emails in Instantly’s “' + g.linked.name + '” with the dashboard’s ' + g.label + ' template?')) return;
-  if (what === 'pull' && !confirm('Replace the dashboard’s ' + g.label + ' template with what’s in Instantly’s “' + g.linked.name + '”?')) return;
+  if (what === 'push' && !g.linked && !confirm('Create a new campaign in Instantly for ' + g.label + '?\n\n' + INS_NEW_CAMP)) return;
+  if (what === 'push' && g.state === 'differs' && !confirm('Replace the emails in Instantly’s “' + g.linked.name + '” with the ones on Templates?')) return;
+  if (what === 'pull' && !confirm('Take what Instantly’s “' + g.linked.name + '” says as the ' + g.label + ' first email on Templates?' +
+      (g.parts && g.parts.follow ? '\n\nIts follow-ups read differently too: taking them changes the Follow-up and Last follow-up for every category.' : ''))) return;
   INS.busy = 'tpl:' + key; insRenderTop();
-  var call = what === 'pull' ? api('pullInstantlyTemplate', { group: key }) : api('saveInstantlyTemplate', { group: key, push: true });
+  var call = what === 'pull' ? api('pullInstantlyTemplate', { key: key }) : api('pushInstantlyTemplate', { key: key });
   call.then(function (r) {
     INS.busy = '';
     var made = r.pushed && r.pushed[0];
-    toast(what === 'pull' ? 'The dashboard now has Instantly’s version' : made && made.created ? '“' + made.campaign.name + '” made in Instantly as a draft' : 'Instantly updated');
-    if (INS.edit && INS.edit.key === key) { INS.edit = null; insRenderEdit(); }
+    toast(what === 'pull' ? 'Templates now has Instantly’s version' : made && made.created ? '“' + made.campaign.name + '” made in Instantly as a draft' : 'Instantly updated');
+    if (what === 'pull') TPL.data = null;
     return insLoad(true);
   }).catch(function (err) { INS.busy = ''; insRenderTop(); toast(err.message || 'Couldn’t do that'); });
+}
+// Every campaign that's behind the dashboard, in one go.
+function insPushAll() {
+  if (INS.busy) return;
+  var n = insGroups().filter(function (g) { return g.linked; }).length;
+  if (!confirm('Write the emails on Templates into all ' + plural(n, 'campaign') + ' in Instantly?')) return;
+  INS.busy = 'all'; insRenderTop();
+  api('pushInstantlyTemplate', { all: true }).then(function (r) {
+    INS.busy = '';
+    toast(plural((r.pushed || []).length, 'campaign') + ' updated in Instantly');
+    return insLoad(true);
+  }).catch(function (err) { INS.busy = ''; insRenderTop(); toast(err.message || 'Couldn’t update them'); return insLoad(true); });
+}
+// A category that went with its family (or with everyone else) gets a campaign of its own.
+function insOwnCampaign(key) {
+  var o = ((INS.data.templates && INS.data.templates.others) || []).filter(function (x) { return x.key === key; })[0];
+  if (!o || INS.busy) return;
+  if (!confirm('Create a campaign in Instantly just for ' + o.label + '?\n\nIts brands then get the ' + o.label + ' first email from Templates. ' + INS_NEW_CAMP)) { insRenderTop(); return; }
+  INS.busy = 'own'; insRenderTop();
+  api('pushInstantlyTemplate', { key: key }).then(function (r) {
+    INS.busy = '';
+    var made = r.pushed && r.pushed[0];
+    toast(made ? '“' + made.campaign.name + '” made in Instantly as a draft' : 'Done');
+    TPL.data = null;
+    return insLoad(true);
+  }).catch(function (err) { INS.busy = ''; insRenderTop(); toast(err.message || 'Couldn’t create it'); });
 }
 function insSigSave() {
   if (INS.busy) return;
   var linked = insGroups().filter(function (g) { return g.linked; }).length;
-  var all = linked > 0 && confirm('Save the signature and update ' + plural(linked, 'campaign') + ' in Instantly with it?\n\nCancel saves it on the dashboard only.');
+  var all = linked > 0 && confirm('Save the footer and update ' + plural(linked, 'campaign') + ' in Instantly with it?\n\nCancel saves it on the dashboard only.');
   INS.busy = 'sig'; insRenderTop();
-  api('saveInstantlyTemplate', { signature: INS.sig, push: all ? 'all' : false }).then(function (r) {
+  api('saveInstantlyFooter', { signature: INS.sig, push: all }).then(function (r) {
     INS.busy = ''; INS.sig = null;
-    toast('Signature saved' + (r.pushed && r.pushed.length ? ' — ' + plural(r.pushed.length, 'campaign') + ' updated in Instantly' : ''));
+    toast('Footer saved' + (r.pushed && r.pushed.length ? ' — ' + plural(r.pushed.length, 'campaign') + ' updated in Instantly' : ''));
     return insLoad(true);
   }).catch(function (err) { INS.busy = ''; insRenderTop(); toast(err.message || 'Couldn’t save'); });
 }
@@ -21340,7 +21570,7 @@ function insRenderPv() {
     '<ul class="ins-notes">' +
       (running.length ? '<li id="ins-when">Running: ' + names(running) + ' — Instantly starts emailing on its next sending slot.</li>' : '') +
       (waiting.length ? '<li id="ins-notyet">Not started: ' + names(waiting) + ' — nothing goes out until you start ' + (waiting.length === 1 ? 'it' : 'them') + ' in Instantly.</li>' : '') +
-      (missing.length ? '<li id="ins-missing">No campaign yet for ' + missing.map(function (c) { return esc(c.label) + ' (' + (c.people - c.canGo) + ')'; }).join(', ') + ' — create it under Templates and they’ll show here.</li>' : '') +
+      (missing.length ? '<li id="ins-missing">No campaign yet for ' + missing.map(function (c) { return esc(c.label) + ' (' + (c.people - c.canGo) + ')'; }).join(', ') + ' — create it above and they’ll show here.</li>' : '') +
       (unsure ? '<li id="ins-unsure">' + unsure + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</li>' : '') +
       (fresh ? '<li id="ins-fresh">' + fresh + ' at brands not reached on LinkedIn yet start unticked: once Instantly emails a brand, the LinkedIn queue stops picking it by itself. Tick the ones you’d rather email.</li>' : '') +
     '</ul>' +
@@ -21350,7 +21580,7 @@ function insRenderPv() {
         cut.map(function (l) {
           return '<tr><td class="fe-tk"><input type="checkbox" data-instick="' + esc(l.contactId) + '"' + (INS.tick[l.contactId] ? ' checked' : '') + ' aria-label="Send ' + esc(l.name) + ' to Instantly"></td>' +
             '<td>' + esc(l.name) + (l.title ? '<div class="fe-dim">' + esc(l.title) + '</div>' : '') + '</td>' +
-            '<td>' + esc(l.brandName) + (l.tplLabel ? '<div class="fe-dim">' + esc(l.tplLabel) + ' template</div>' : '') + '</td><td>' + esc(l.email) + '</td>' +
+            '<td>' + esc(l.brandName) + (l.tplLabel ? '<div class="fe-dim">' + esc(l.tplLabel) + ' email</div>' : '') + '</td><td>' + esc(l.email) + '</td>' +
             '<td class="' + (l.tick ? 'fe-ok' : 'fe-maybe') + '">' + esc(l.why) + '</td></tr>';
         }).join('') + '</tbody></table></div>' +
         (send.length > cut.length ? '<div class="fe-foot"><button class="su-show" data-ins="all">Show all ' + send.length + '</button><span class="fe-dim">Ticks count for everyone, shown or not.</span></div>' : '')
@@ -21526,34 +21756,12 @@ function insOnClick(e) {
   if (a === 'sync') { insSync(false); return; }
   if (a === 'hookon') { insHook(true); return; }
   if (a === 'hookoff') { insHook(false); return; }
-  // Templates.
+  // Campaigns and their emails.
   if (a === 'tpl-edit') { insEditOpen(g); return; }
-  if (a === 'tpl-close') { INS.edit = null; insRenderTop(); insRenderEdit(); return; }
-  if (a === 'tpl-save') { insTplSave(false); return; }
-  if (a === 'tpl-savepush') { insTplSave(true); return; }
+  if (a === 'tpl-open') { gotoView('templates'); return; }
   if (a === 'tpl-push') { insTplRow(g, 'push'); return; }
   if (a === 'tpl-pull') { insTplRow(g, 'pull'); return; }
-  if (a === 'tpl-addstep' && INS.edit && INS.edit.steps.length < 3) {
-    INS.edit.steps.push({ body: 'Hi (NAME),\n\n\n\nBest,', wait: INS.edit.steps.length === 1 ? 3 : 4 });
-    insRenderEdit();
-    return;
-  }
-  if (a === 'tpl-dropstep' && INS.edit) {
-    var i = Number(t.getAttribute('data-i'));
-    if (i > 0) { INS.edit.steps.splice(i, 1); insRenderEdit(); }
-    return;
-  }
-  if (a === 'tpl-reset' && INS.edit) {
-    var gr = insGroup(INS.edit.key);
-    if (!gr || !confirm('Put the ' + gr.label + ' template back to Claude’s draft? Your version on the dashboard is replaced. Instantly isn’t touched.')) return;
-    var key = INS.edit.key;
-    api('saveInstantlyTemplate', { group: key, reset: true }).then(function () {
-      toast('Back to the draft');
-      INS.edit = null; insRenderEdit();
-      return insLoad(true);
-    }).catch(function (err) { toast(err.message || 'Couldn’t reset it'); });
-    return;
-  }
+  if (a === 'tpl-pushall') { insPushAll(); return; }
   if (a === 'sig-edit') { INS.sig = (INS.data.templates && INS.data.templates.signature) || ''; insRenderTop(); var sb = document.getElementById('ins-sigbox'); if (sb) sb.focus(); return; }
   if (a === 'sig-cancel') { INS.sig = null; insRenderTop(); return; }
   if (a === 'sig-save') { insSigSave(); return; }
@@ -21572,6 +21780,7 @@ function insOnChange(e) {
     }).catch(function (err) { INS.busy = ''; insRenderTop(); toast(err.message || 'Couldn’t use that campaign'); });
     return;
   }
+  if (t.id === 'ins-own') { if (t.value) insOwnCampaign(t.value); return; }
   var id = t.getAttribute && t.getAttribute('data-instick');
   if (id) { INS.tick[id] = t.checked; insSyncSend(); }
 }
@@ -27399,6 +27608,7 @@ function gotoViewNow(id) {
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
   if (id === 'instantly') loadInstantly();
+  if (id === 'templates') loadTemplates();
   if (id === 'reached') loadReached();
   if (id === 'schedule') loadSchedule();
   if (id === 'weekplan') loadWeekPlan();

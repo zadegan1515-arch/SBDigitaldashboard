@@ -9,7 +9,7 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 4. **No Anthropic API spend** unless Leo explicitly approves it for a specific feature. Prefer rules/regex.
 5. **Claude does not move real money.** Payouts on the platform run only when a human clicks; PayPal stays sandbox unless Leo sets `PAYPAL_ENV=live`.
 6. **Never bulk-delete or overwrite data** without showing exactly what changes first.
-7. **No emails go out** (Leo, Oct 6 2026: "no emails should be sent out"). `EMAIL_SENDING_OFF = true` in `src/lib/no-send.ts` stops every send path at its last step (`deliver`, `sendViaGmail`, `opsSend`) — outreach, test/warmup, ops replies, Show Board access codes and team notifications. Drafting, Copy and Open in Gmail still work. Never flip it without Leo's explicit yes; `node scripts/test-no-send.mjs` fails if it's off or a send path skips the guard. (If Leo turns sending back on: the cap is in code — start 5/day, +8/week, ceiling 40; never raise it without him.) **Cold email runs through Instantly** (Leo, Nov 16 2026: "run cold outreach through Instantly … build it connected"): the site still sends nothing — a signed-in person hands people to an Instantly campaign from Outreach → Instantly (every one named first; never a key, Claude's token or a cron) and Instantly emails them, with the words of the template a signed-in person wrote into that campaign (Claude may draft a template on the dashboard; only a signed-in person sends it to Instantly). That hand-over is the one way an email now goes out because of the dashboard; never automate it.
+7. **No emails go out** (Leo, Oct 6 2026: "no emails should be sent out"). `EMAIL_SENDING_OFF = true` in `src/lib/no-send.ts` stops every send path at its last step (`deliver`, `sendViaGmail`, `opsSend`) — outreach, test/warmup, ops replies, Show Board access codes and team notifications. Drafting, Copy and Open in Gmail still work. Never flip it without Leo's explicit yes; `node scripts/test-no-send.mjs` fails if it's off or a send path skips the guard. (If Leo turns sending back on: the cap is in code — start 5/day, +8/week, ceiling 40; never raise it without him.) **Cold email runs through Instantly** (Leo, Nov 16 2026: "run cold outreach through Instantly … build it connected"): the site still sends nothing — a signed-in person hands people to an Instantly campaign from Email → Instantly (every one named first; never a key, Claude's token or a cron) and Instantly emails them, with the words a signed-in person wrote into that campaign from Email → Templates (Claude may save a template on the dashboard; only a signed-in person sends it to Instantly). That hand-over is the one way an email now goes out because of the dashboard; never automate it.
 8. Ask clarifying questions when the request is ambiguous. When reporting back: **what you fixed, what Leo needs to give you** — short, with links. No long explanations. Anything Leo must do himself is a labeled **NEED** block: a bold one-line label, numbered steps, only the info required — nothing extra.
 9. **Attendee data (Audience module):** individual attendee records never leave the dashboard — sponsors and every public API get aggregates only. Email is identity: all attendee writes go through `normalizeEmail` in `src/lib/audience-core.ts`, guarded by `node scripts/test-audience.mjs`. Consent text is versioned (`ConsentText`); imports never claim consent the person didn't give. Deleting an attendee (the "remove my data" path) always shows what goes before it goes.
 
@@ -33,7 +33,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · **Deals** (Overview / In talks / Deals board / Sponsorships — below; Leo, Nov 8 2026: "combine the Zach
   tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
-  Week plan / Schedule / Email / Instantly / People / Archived / Email stats) ·
+  Week plan / Schedule / People / Archived / Email stats) · **Email** (Email / Instantly / Templates — below; where these
+  notes say "Outreach → Email" or "Outreach → Instantly", read Email → …) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
   today, 7 days, unique, avg time, requests) + 30-day visits chart + who's-opened feed grouped by day with
   exact NY times and time on board; **every** board open is logged, gate on or off (anonymous = "Visitor") / **Board codes** (was "In talks" until the In talks tab; view id still `talks`, `listTalks`) = per-brand engagement cards (code, viewers, opens, timed minutes
@@ -1131,20 +1132,33 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   own email machine already skips those brands, and **Instantly's send list never takes them**: `sendToInstantly` reads
   this card's `ready` list, so it drops group `working` and treats `held` as `fresh` (not reached yet → unticked, Leo's
   call); `test-instantly-e2e.js` holds both. A new group on this list must be decided there too.
+  **Domain Search is the main route** (Leo, later Nov 16 2026, after importing the people file into Hunter's *Leads* and
+  seeing a credit an email: "lets do the domain search" — reported at about a credit a company for up to 10 emails, and
+  it finds more people at each; Hunter's pricing page still couldn't be opened from the cloud session). The card's
+  websites file now covers **every company still missing emails** (`feCompanies`: the people file's brands as the chips
+  and category stand + the brands with nobody on file; "Domain Search — N companies still missing emails (M with nobody
+  on file)", how many share a line, how many go by name for want of a website). On Nov 16: 711 companies, 191 with a
+  website. **Websites in bulk**: `saveBrandWebsites({ rows: [{ brandId, website }] })` previews every brand first (only an
+  empty website is filled; never a social / marketplace link; `expect` stale-check), one transaction, Setting
+  `brandWebsitesLast`; `undoBrandWebsites` names what goes (one changed since stays). Both are ClaudeActions. A Claude
+  session researched the missing ones on the open web (no API spend) for Leo's yes. Hunter's **Leads** export (no `SB id`;
+  "Verification status" beside "Sending status" and "Verification date") reads back through `saveFoundEmails` — matched by
+  the first + last name and the company each person was sent as. **Bringing Domain Search results back (new people) is
+  still not built** — it waits for Leo's first result file.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
-- **Outreach → Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect that to Instantly, and run
+- **Email → Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect that to Instantly, and run
   cold outreach through Instantly", then "lets build it connected now", then — once it showed on the Email tab — "make
-  this its own tab and make it all cleaner"). Its own Outreach sub-tab after Email (view `instantly`, `loadInstantly`,
+  this its own tab and make it all cleaner"). A sub-tab of the Email top tab — Email · Instantly · Templates — (view `instantly`, `loadInstantly`,
   `#ins-card`, `INS` / `ins*` in app.html, `.ins-` CSS); the Email tab keeps a one-line pointer (`#ins-link`, **Open
   Instantly →**). The page, top to bottom: the heading with **Live updates** on / off and **↻ Sync now** on its right
-  (`#ins-syncline`) → **Templates & campaigns** (`#ins-tpls`, a row per template — below) → seven
+  (`#ins-syncline`) → **Campaigns** (`#ins-tpls`, a row per campaign — below) → seven
   tiles (**Ready to send** with Review & send… — its count is the send list's own, `insPlanLoad` = a `sendToInstantly`
   preview, never the Hunter card's — then In Instantly · Emailed · Opened the board · Replied · Bounced · Unsubscribed) →
-  Last sent · Undo → the **template editor** (`#ins-edit`, when open) → **Review & send** (a panel, when open) → **What
+  Last sent · Undo → **Review & send** (a panel, when open) → **What
   came back** (one table, a chip per kind: Opened the board · Replied · Unsubscribed · Bounced · Taken out; a name opens
   the brand page at them). A tick or a chip never redraws the list (`insSyncSend`, `insSyncBoxes`), and a background read
-  never redraws an open editor or takes the cursor out of the signature box (`insRender`). Rules pure in `src/lib/instantly.ts`
+  never takes the cursor out of the footer box. Rules pure in `src/lib/instantly.ts`
   (`node scripts/test-instantly.mjs`), the API calls in `src/lib/instantly-api.ts` (Instantly API v2,
   developer.instantly.ai — read Nov 16 2026; Bearer `INSTANTLY_API_KEY`; `INSTANTLY_API_URL` points it at the tests' fake),
   the database side in `src/lib/instantly-db.ts` (shared by /api/data, the webhook route and the cron). **The dashboard is
@@ -1197,49 +1211,59 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "missing a permission" on Create / Update). **Unverified against a real
   Instantly account until Leo's first send** — built from its docs and tested against a fake that speaks its paths
   (also unverified: the body of the campaign it creates, and that schedule day `2`–`4` = Tue–Thu).
-  **A template per kind of brand, the same on the dashboard and in Instantly** (Leo, Nov 16 2026: "the way I want to do
-  it is to have templates. For energy drinks I'll have one template, for alcohol companies … one template, for nicotine
-  companies … one template"; his picks: templates live "both on the dashboard and instantly, they should be connected",
-  also Beauty and Food, drinks, CPG, everyone else one general email). Rules pure in `src/lib/cold-templates.ts`
-  (`node scripts/test-cold-templates.mjs`): `TEMPLATE_GROUPS` — energy · alcohol (alcohol, rtd, spirits) · nicotine ·
-  beauty · food (cpg, beverage, electrolytes, qsr) · general (every other category) — `groupOfCategory(Brand.category)`
-  picks a person's template. A template = a subject + one to three emails (`MAX_STEPS`; a follow-up waits N days after
-  the one before, in the same thread — Instantly sends an empty subject as a reply), written with `(NAME)` `(BRAND)`
-  `(TITLE)` `(BOARD)` (`[Name]`… too); **one signature** under every email (`DEFAULT_SIGNATURE`; Leo should add a mailing
-  address there). Stored in Setting `instantlyTemplates` = { signature, groups: { key: { subject, steps, at, by } } } —
-  a group not saved yet shows **Claude's draft** (`DEFAULT_TEMPLATES`: one ask, one link, "just say the word and I won't
-  follow up"; the nicotine draft promises no sampling and says 21+, as the alcohol one does — Leo confirms what SB offers
-  nicotine brands). **One Instantly campaign per template** (Setting `instantlyCampaigns` = { key: { id, name, at, by,
-  sig } }; the old single `instantlyCampaign` stands for `general`): **Create in Instantly** / **Save & create in
-  Instantly** = `saveInstantlyTemplate({ group, subject?, steps?, push: true })` → `pushTemplate` (instantly-db.ts): the
-  first time `POST /api/v2/campaigns` with `campaignDraft` — named "SB cold · <label>", **a draft** (nothing sends until
-  Leo attaches an inbox and starts it in Instantly), Tue–Thu 9–5 `America/Detroit` (Instantly's list has no New York),
-  30 a day, stop on reply, stop for company, text only, no open / link tracking, unsubscribe header — after that `PATCH`
-  of its `sequences` only (its schedule, inboxes and limits are Leo's in Instantly). `toSequence` turns the template
-  into Instantly's steps: line breaks → `<br/>`, the signature appended, placeholders → Instantly's variables
-  (`{{firstName}}` `{{companyName}}` `{{jobTitle}}` `{{board_link}}`); `fromSequence` reads them back. A campaign he made
-  himself can be given to a template (the row's "or use one you made…" = `setInstantlyCampaign({ campaignId, group })`,
-  refused for one already another template's; '' takes it off). **The page compares the two on every open**
-  (`instantlyStatus.templates.groups[].state`, `syncState`): `match` · `differs` (with `newer`: the campaign no longer
-  says what was last sent there (`sig`) = "It was changed in Instantly", else the dashboard's copy is newer) → **Update
-  Instantly** (asks, then push) or **Use Instantly's version** (asks, then `pullInstantlyTemplate({ group })` replaces
-  the dashboard's copy) · `empty` (a campaign with no email → Send it to Instantly) · `gone` (deleted there → Create it
-  again) · `none`. **Edit template** opens the editor (`insEditOpen`, `INS.edit`): subject, the emails, days between,
-  + Add a follow-up / Remove, a live preview as the first person on the send list who'd get it (their name and brand, a
-  sample board link, the signature), a warning when the first email has no `(BOARD)`; **Save here only**
-  (`push: false` — the row then says the dashboard's copy is newer), **Back to Claude's draft** (`reset`, asked first).
-  The signature's Edit → `saveInstantlyTemplate({ signature, push: 'all' })` (asks; every linked campaign rewritten) or
-  dashboard only. **Sending a template to Instantly is a signed-in person's** (`push` refused for Claude's token and for
-  keys; `saveInstantlyTemplate` / `pullInstantlyTemplate` are closed to keys altogether) — a Claude session may save a
-  draft on the dashboard (`node scripts/cc.mjs saveInstantlyTemplate @file.json`, a ClaudeAction), and the row then
-  shows it differs until Leo sends it. **Who goes where**: `sendToInstantly` gives every line its `tpl` / `tplLabel` /
-  `campaignId`; a person whose template has no campaign (or whose campaign is gone) is action `nocamp` — left out,
-  "No Instantly campaign for <label> yet — set it up under Templates" (`#ins-missing`, the tile's "N more waiting on a
-  campaign"); the preview's `campaigns` = per template { people, canGo, name, statusWord, sends }; one Send goes to
-  several campaigns under one batch (the Undo takes all of it back; "Last sent … to “A + 1 more”").
+  **One email per kind of brand, written on Email → Templates and sent by its own Instantly campaign** (Leo, Nov 16
+  2026: "the way I want to do it is to have templates. For energy drinks I'll have one template, for alcohol companies
+  … one template, for nicotine companies … one template, and then we'll go from there"; his picks: "both on the
+  dashboard and instantly, they should be connected", also Beauty and Food, drinks, CPG, everyone else one general
+  email). **The words live in one place — Email → Templates** (below; `email-templates.ts`, Setting `emailTemplates`):
+  another chat built that tab the same day, so this side has **no editor of its own**. Rules pure in
+  `src/lib/cold-templates.ts` (`node scripts/test-cold-templates.mjs`): a **campaign key** is `general` or a category;
+  its three emails (`sequenceTemplate`) = its first email on Templates (`firstKeyOf`: `intro` for general, `cat:<key>`
+  else) + the **Follow-up** and **Last follow-up** every category shares (`WAITS` 3 and 4 days in a campaign the
+  dashboard makes; follow-ups go with an empty subject = the same thread). **Leo's picks have a row from the start**
+  (`MAIN_KEYS`: energy · alcohol · nicotine · beauty · cpg · general; `FAMILIES` — Alcohol also takes rtd and spirits,
+  "Food, drinks & CPG" also beverage, electrolytes, qsr; `keyLabel`, and `CATEGORY_LABELS` = CAT_NAMES in app.html, held
+  together by the test). **Which campaign a brand's people go to** (`campaignKeyOf(category, has)`): the category's own
+  campaign → its family's → for a category in no family, the general one; **a family never falls through to the
+  general email** — its people wait (`nocamp`, "No Instantly campaign for <label> yet", `waitsOn`). **Any other
+  category can be given a campaign of its own** (the menu under the rows, `#ins-own` → asked → `pushInstantlyTemplate({
+  key })`): it gets a row, and its brands leave the family's / the general campaign. **One Instantly campaign per key**
+  (Setting `instantlyCampaigns` = { key: { id, name, at, by, sig } }; the old single `instantlyCampaign` stands for
+  `general`): **Create in Instantly** = `pushInstantlyTemplate({ key })` → `pushTemplate` (instantly-db.ts): the first
+  time `POST /api/v2/campaigns` with `campaignDraft` — named "SB cold · <label>", **a draft** (nothing sends until Leo
+  attaches an inbox and starts it in Instantly), Tue–Thu 9–5 `America/Detroit` (Instantly's list has no New York), 30 a
+  day, stop on reply, stop for company, text only, no open / link tracking, unsubscribe header — after that `PATCH` of
+  its `sequences` only: the words replaced, **the waits Leo set in Instantly kept** (`toSequence(…, keep)`); its
+  schedule, inboxes and limits are his there. `toSequence`: line breaks → `<br/>`, the footer appended, placeholders →
+  Instantly's variables (`{{firstName}}` `{{companyName}}` `{{jobTitle}}` `{{board_link}}`); `fromSequence` reads them
+  back. A campaign he made himself can be given to a row ("or use one you made…" = `setInstantlyCampaign({ campaignId,
+  group })`, refused for one already another key's; '' takes it off). **The page compares the two on every open**
+  (`instantlyStatus.templates.groups[]`: key, label, main, first, also, own, hasBoard, linked, campaign, `state`,
+  `newer`, `parts`; `syncState` compares the words only — never the waits): `match` ("Matches Templates") · `differs`,
+  saying **which part** (`parts`: its first email / its follow-ups) and **whose is newer** (the campaign no longer says
+  what the dashboard last wrote there, `sig` = "Changed in Instantly"; else "Changed on Templates") → **Update
+  Instantly** (asks, then push) or **Use Instantly's version** (asks — and says when its follow-ups differ too, since
+  taking them changes the Follow-up / Last follow-up for every category — then `pullInstantlyTemplate({ key })`: each
+  email that reads differently there is saved into its own template, `changed` names them; advisory-locked with
+  Templates' own saves) · `empty` (a campaign with no email → Send it to Instantly) · `gone` (deleted there → Create it
+  again) · `none`. Several campaigns behind the dashboard (a shared follow-up changed) → **Update all N in Instantly**
+  (`pushInstantlyTemplate({ all: true })`, asked). **Edit email** on a row opens that email on Templates (`insEditOpen`
+  → `TPL.open`, `TPL.jump`). **The footer** (`#ins-sigline`; Setting `instantlyTemplates` = { signature }, none by
+  default — the templates sign off "Best, Zach" themselves): a few lines under every email in Instantly (Leo should put
+  a mailing address there) = `saveInstantlyFooter({ signature, push })` (asks; every campaign rewritten, or dashboard
+  only). **Sending anything to Instantly is a signed-in person's** (`pushInstantlyTemplate`, and `push` on the footer,
+  refused for Claude's token and for keys; all three are closed to keys) — a Claude session may save a template
+  (`node scripts/cc.mjs saveEmailTemplate @file.json`, a ClaudeAction) and the row then shows "Changed on Templates"
+  until Leo updates Instantly. **Who goes where**: `sendToInstantly` gives every line its `tpl` (the campaign key it
+  goes to, or waits for) / `tplLabel` / `campaignId`; the preview's `campaigns` = per key { people, canGo, name,
+  statusWord, sends } and `byCategory` (people ready per category, for the menu); one Send goes to several campaigns
+  under one batch (the Undo takes all of it back; "Last sent … to “A + 1 more”"). The sync reads the campaigns with
+  people in them first, nine a run (Instantly allows 20 email reads a minute).
   **Each person's own Show Board link** (Leo: "on each email for each brand … attach the [Show Board] with the brand's
   own personal link. That way we can see if they go and look"; his picks: in the first email, and know **which
-  person**). `(BOARD)` → Instantly's `{{board_link}}`, filled per lead at the send: `personBoardLink(sponsorBoardUrl(),
+  person**). The standard first email of every category carries it on a line of its own (`BOARD_LINE` + `(BOARD)` in
+  `introText`, email-templates.ts; Templates warns when a first email has none, as does its campaign's row). `(BOARD)`
+  → Instantly's `{{board_link}}`, filled per lead at the send: `personBoardLink(sponsorBoardUrl(),
   code, contactId)` = `https://shows.sboyagency.com/?code=<Brand.boardCode>&p=<key>` — the brand's code (minted at the
   send if it has none, `ensureBoardCodes`) + a 6-character key worked out from the contact id (`src/lib/board-key.ts`,
   `personKey`: sha256, no 0 / O / 1 / I / L; nothing stored, no new column). `public/sponsor.html` passes `p` on to
@@ -1250,13 +1274,36 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   back to the page. On this tab: the **Opened the board** tile and chip
   (`instantlyStatus.counts.opened`, people `state: 'opened'`: visits under a handed-over person's email at their brand
   since the hand-over, "2 opens · 4 min on the board" — minutes from the board's heartbeat; "under a minute" may be a
-  mail scanner following the link, said under the list). The link is in the first email only (the drafts' follow-ups
+  mail scanner following the link, said under the list). The link is in the first email only (the standard follow-ups
   have none; nothing stops Leo writing `(BOARD)` into one). A lead Leo adds in Instantly by hand has no `board_link` —
   Instantly then sends that line empty.
   Tests: `node scripts/test-instantly.mjs`, `node scripts/test-cold-templates.mjs`, `NODE_PATH=$(npm root -g) node
   scripts/test-instantly.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-instantly-e2e.js` (real handlers, the webhook and
   public board routes, a signed-in session, a fake Instantly).
+- **Email — its own top tab, and Templates** (Leo, Nov 16 2026: "keep the Outreach tab but then I want a tab that says
+  Email … put the Email and Instantly tabs there … a Template tab under the Email tab with templates and I want you to
+  separate by category"). Top tab after Outreach (`data-view="email-out"`, `SUBTABS['email-out']` = Email (`#email-out`) ·
+  Instantly (`#instantly`) · Templates (`#templates`)); Outreach keeps LinkedIn / Results / Week plan / Schedule / People /
+  Archived / Email stats. **Templates** (`TPL` / `tpl*` in app.html, `.tpl-` CSS; rules pure in
+  `src/lib/email-templates.ts`): a row per template — **Every category** (First email = Leo's intro word for word, Follow-up,
+  Last follow-up), then **one first email per category** under Top → Skip priority (the intro plus that category's angle
+  line, `CATEGORY_ANGLES` in email.ts; a category with none gets the general one) — and a find box. A row opens its editor,
+  one at a time: subject, body, a preview filled in for a sample person, **Save**, **Save & update Instantly** (only on a
+  template an Instantly campaign uses — `tplFeeds`; asks, saves, then `pushInstantlyTemplate` for its campaign, or for
+  every campaign when it's a shared follow-up), **Copy**, **Copy for Instantly** ((NAME) → `{{firstName}}`, (BRAND) →
+  `{{companyName}}`, (TITLE) → `{{jobTitle}}`, (BOARD) → `{{board_link}}`), Discard changes, **Back to the standard text**
+  (its confirm quotes what goes). **(BOARD)** = the person's own Show Board link (Email → Instantly above): the preview
+  shows a sample link, every standard first email has it, and a first email without it says so (`#tpl-noboard`).
+  **Where each email goes in Instantly** (`listEmailTemplates` rows carry `instantly`: `{ key, campaign }` — the first
+  email of that campaign, a tag on the row; `{ campaigns: n }` — a shared follow-up, in every campaign; `{ goesWith,
+  label, has }` — a category with no campaign of its own: "In Instantly, RTD brands get the Alcohol email until this
+  category has a campaign of its own", `#tpl-insnote`). `listEmailTemplates` (read) / `saveEmailTemplate({ key: 'intro' | 'followup' | 'final' | 'cat:<category>',
+  subject, body } | { key, reset })` — Setting `emailTemplates` holds only Leo's own versions (advisory-locked; text equal to
+  the standard is no version of his own); a save is a ClaudeAction. Typed text survives a redraw (`TPL.drafts`). **Nothing
+  sends or drafts from it**: it is the one place the cold emails are written, and Instantly's campaigns are built from
+  it (cold-templates.ts) — only when a signed-in person presses Update / Create; the email machine's own intro drafts
+  (`introEmail`) don't read it. Tests: `node scripts/test-email-templates.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-templates.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned
@@ -1264,7 +1311,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   which keep what's left (Soda, Water & Other Drinks / Alcohol (other) / Clothing & Fashion);
   `nicotine` = pouches. The vocabulary lives in `CATEGORY_KEYS` (route.ts), `CAT_NAMES` (app.html),
   `category-hints.ts`, `LI_HOOKS`, email `CATEGORY_ANGLES` and li-capture `INDUSTRY_FITS` — a new
-  category needs all six. `placeBrand` only ever sorts brands out of the old broad buckets (`SORTABLE`:
+  category needs all six. (Its name also goes in `CATEGORY_LABELS`, cold-templates.ts — the Instantly campaigns' names; `test-cold-templates.mjs` fails until it matches `CAT_NAMES`.) `placeBrand` only ever sorts brands out of the old broad buckets (`SORTABLE`:
   beverage, alcohol, apparel, wellness, nightlife, unresolved) by known name, then words; a specific
   filing is never second-guessed. **Re-file**: `refileCategories` previews every move (+ planned
   Schedule days whose category splits, `remapPlanDays`); apply moves only ticked moves a fresh preview
@@ -2038,7 +2085,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `src/app/api/google/{start,callback}` — OAuth entry/return. `?drive=1`, `?ops=1` pick the grant.
 - `src/app/api/ops/attachment` — streams a Gmail attachment to a signed-in user.
 - `src/app/api/cron/email` (11:00 UTC: draft, replies, Notion sync, ops scan, Instantly sync) · `src/app/api/cron/send` (15:00 UTC).
-- `src/app/api/instantly/webhook` — Instantly's events as they happen (secret header; Outreach → Instantly above).
+- `src/app/api/instantly/webhook` — Instantly's events as they happen (secret header; Email → Instantly above).
 - **Audience module (sponsorship Phase 1)** — `prisma`: Event / Attendee / Attendance (the join
   table — "same person, multiple events" is the product) / ConsentText. `src/lib/audience.ts` =
   server logic; `src/lib/audience-core.ts` = pure helpers (email normalization, CSV import mapping;

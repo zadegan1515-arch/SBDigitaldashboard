@@ -269,7 +269,7 @@ async function main() {
   const tabs = await page.$$eval('.tabs.cc-only:not(#sub-tabs) .nav-item', (els) => els.map((e) => e.textContent));
   // Nov 8 2026: one Deals tab right after Home holds Overview · In talks · Deals board · Sponsorships;
   // the Zach, In talks, Deals and Elizabeth tabs are gone.
-  assert.deepEqual(tabs, ['Home', 'Deals', 'Brands', 'Outreach', 'Show Board', 'Audience', 'Operations'], tabs.join(' | '));
+  assert.deepEqual(tabs, ['Home', 'Deals', 'Brands', 'Outreach', 'Email', 'Show Board', 'Audience', 'Operations'], tabs.join(' | '));
   await page.click('.tabs .nav-item[data-view="board"]');
   await page.waitForSelector('#sub-tabs .nav-item[data-view="talks"]');
   assert.equal(await text('#sub-tabs .nav-item[data-view="talks"]'), 'Board codes');
