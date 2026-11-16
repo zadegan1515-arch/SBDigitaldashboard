@@ -186,7 +186,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const lp = await mkPeople('late', BUYERS);
     await prisma.target.create({ data: { brandId: 'late', contactId: lp[0].id, status: 'sent', sentAt: noonNY(sixAgo), queuedFor: noonNY(sixAgo) } });
     for (const c of lp.slice(1)) await prisma.target.create({ data: { brandId: 'late', contactId: c.id, status: 'drafted', queuedFor: noonNY(sixAgo) } });
-    // Passy: passed two days ago (two weeks), people waiting in the pool,
+    // Passy: passed two days ago (a Pass still running), people waiting in the pool,
     // and yesterday's Schedule showed it anyway (the old leak).
     await mkBrand('passy', 'Passy Pop', 'electrolytes', {
       passedTodayAt: noonNY(shift(today, -2)), passedUntil: new Date(Date.now() + 12 * 864e5),
@@ -318,7 +318,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     q3 = await data('getTodayQueue');
     assert.ok(!q3.targets.some(t => ['bigx', 'lowA'].includes(t.brandId)), 'Off queue sticks through a reload');
     const bx = await prisma.brand.findUnique({ where: { id: 'bigx' } });
-    assert.ok(bx.passedTodayAt && !bx.passedUntil, 'today only — not the two-week Pass');
+    assert.ok(bx.passedTodayAt && !bx.passedUntil, 'today only — not the month’s Pass');
     assert.equal(await prisma.target.count({ where: { brandId: 'bigx', shelved: true } }), 0, 'nobody shelved');
     plan = await data('getOutreachPlan');
     assert.ok(!plan.plan[today].brandIds.includes('bigx'), 'off today\'s plan');

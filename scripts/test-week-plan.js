@@ -30,6 +30,9 @@
 //      the server answers) and the card stays where it is on screen through
 //      the refresh; Remove leaves the card in its place with Undo (PutBack);
 //      a brand on a day asks first and comes off the day too.
+//      Pass · a month (Leo, Nov 16 2026: "if i dont want a brand can i pass
+//      them for a month"): passBrandToday — the card stays with Undo (the
+//      Pass lifted, and back on the day it was on); on a day it asks first.
 //   7. The spread: a preview (a seed) over the list names each day's new
 //      brands, the tiles count them; Shuffle again deals with another seed;
 //      Put them on the days sends exactly the previewed days; Undo asks first.
@@ -107,6 +110,8 @@ const WEEK = {
 };
 
 const OFF = new Set();
+// On a Pass: off the list and off its day until lifted (the server's rule).
+const PASSED = new Set();
 // Where the reach-again brands sit (reachAgain / planMoveBrand / planRemoveBrand keep it).
 const AGAIN_ON = {};
 // Handlers answered late, to see the page before the server answers.
@@ -128,15 +133,19 @@ const H = {
         fresh: [1, 2, 3, 4, 5].map((i) => ({ id: 'l' + i, name: 'Lee ' + i, title: 'Marketing Manager' })), going: 3, pinnedOn: AGAIN_ON.ag2 || null }),
     ];
     const days = WEEK.days.map((d) => Object.assign({}, d, {
-      pinned: d.pinned.concat(again.filter((a) => a.pinnedOn === d.date).map((a) => ({ id: a.id, name: a.name, category: a.category, state: 'going', going: a.going, waits: null, people: a.fresh.slice(0, a.going), big: false }))),
+      pinned: d.pinned.filter((x) => !PASSED.has(x.id)).concat(again.filter((a) => a.pinnedOn === d.date).map((a) => ({ id: a.id, name: a.name, category: a.category, state: 'going', going: a.going, waits: null, people: a.fresh.slice(0, a.going), big: false }))),
     }));
     return Object.assign({}, WEEK, { days, again: Object.assign({}, WEEK.again, { rows: again }),
-      bank: Object.assign({}, WEEK.bank, { rows: WEEK.bank.rows.filter((r) => !OFF.has(r.id)) }) });
+      bank: Object.assign({}, WEEK.bank, { rows: WEEK.bank.rows.filter((r) => !OFF.has(r.id) && !PASSED.has(r.id)) }) });
   },
   reachedBrands: () => ({ brands: {
     r2: ['2026-09-20', '2026-09-22', 'a', 2, 1], r3: ['2026-10-01', '2026-10-10', 'i', 3, 0],
     ag1: ['2026-10-01', '2026-10-09', 'i', 3, 0], ag2: ['2026-09-20', '2026-09-29', 'i', 2, 0],
   } }),
+  passBrandToday: ({ brandId, on }) => {
+    if (on === false) PASSED.delete(brandId); else PASSED.add(brandId);
+    return { id: brandId, name: brandId, passedToday: on !== false, passedUntil: on === false ? null : '2026-11-17T17:00:00Z', passDays: 30, unqueued: 0 };
+  },
   weekBankSize: ({ size }) => ({ ok: true, size }),
   weekBankAdd: ({ brandIds }) => ({ ok: true, added: brandIds.map((id) => ({ id, name: id })), already: 0, refused: [] }),
   weekBankRemove: ({ brandIds }) => { brandIds.forEach((id) => OFF.add(id)); return { ok: true, removed: brandIds.length, offDays: [] }; },
@@ -474,6 +483,59 @@ async function main() {
   await settle();
   await page.evaluate(() => window.scrollTo(0, 0));
   console.log('✓ 6 no glitches: shown at once, the card stays put through the refresh, Remove leaves Undo in place');
+
+  // 6b. Pass · a month (Leo, Nov 16 2026) ------------------------------------------
+  // A waiting brand: one click, no question; the card stays with Undo.
+  const passBtn = cardOf('r14') + ' [data-wppass="r14"]';
+  assert.equal((await page.textContent(passBtn)).trim(), 'Pass · a month', 'the button says how long');
+  assert.match(await page.getAttribute(passBtn, 'title'), /Not now — off your list for a month, then it comes back by itself/);
+  assert.ok(!(await page.$(cardOf('r3') + ' [data-wppass]')), 'a brand that can’t go has no Pass');
+  await page.$eval(cardOf('r14'), (el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 420));
+  await page.waitForTimeout(60);
+  const r14 = await top(cardOf('r14'));
+  n = count('passBrandToday');
+  let dn = dialogs.length;
+  await page.click(passBtn);
+  assert.deepEqual((await waitFor('passBrandToday', n)).args, { brandId: 'r14' }, 'Pass on a waiting brand');
+  assert.equal(dialogs.length, dn, 'a waiting brand is passed without a question');
+  await settle();
+  const pg = await page.$eval('#wp-list [data-wpundo1="r14"]', (el) => ({ text: el.closest('.wp-b').textContent, top: el.closest('.wp-b').getBoundingClientRect().top }));
+  assert.match(pg.text, /Brand 14[\s\S]*Passed for a month — back Nov 17\.[\s\S]*Undo/, 'it stays in its place: passed, back when, Undo');
+  assert.ok(Math.abs(pg.top - r14) < 2, 'nothing moved up into its place');
+  assert.match(await page.textContent('#toast'), /Brand 14 passed — off outreach for a month, back Nov 17/);
+  n = count('passBrandToday');
+  let adds = count('planAddBrands');
+  await page.click('#wp-list [data-wpundo1="r14"]');
+  assert.deepEqual((await waitFor('passBrandToday', n)).args, { brandId: 'r14', on: false }, 'Undo lifts the Pass');
+  await settle();
+  assert.equal(count('planAddBrands'), adds, 'it was on no day, so Undo puts it on none');
+  await page.waitForSelector(passBtn);
+  // A brand on a day: it asks, comes off the day, and Undo puts it back there.
+  n = count('passBrandToday');
+  dn = dialogs.length;
+  await page.click(cardOf('r1') + ' [data-wppass="r1"]');
+  assert.deepEqual((await waitFor('passBrandToday', n)).args, { brandId: 'r1' });
+  assert.match(dialogs[dn], /Pass Celsius for a month\?[\s\S]*It comes off Tue Oct 20/, 'on a day: asked first, naming the day');
+  await settle();
+  assert.ok(!(await page.$('[data-wptile="2026-10-20"] [data-wpdrag="r1"]')), 'off its day');
+  n = count('passBrandToday');
+  adds = count('planAddBrands');
+  await page.click('#wp-list [data-wpundo1="r1"]');
+  assert.deepEqual((await waitFor('passBrandToday', n)).args, { brandId: 'r1', on: false });
+  assert.deepEqual((await waitFor('planAddBrands', adds)).args, { date: '2026-10-20', brandIds: ['r1'] }, 'Undo puts it back on its day');
+  await settle();
+  // (the bar is slim this far down the page: its brand names are there, not shown)
+  await page.waitForSelector('[data-wptile="2026-10-20"] [data-wpdrag="r1"]', { state: 'attached' });
+  // The open day's cards carry it too.
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(80);
+  await page.click('[data-wptile="2026-10-20"]');
+  await page.waitForSelector('#wp-dayopen [data-wppass="r1"][data-wpday="2026-10-20"]');
+  assert.match(await page.getAttribute('#wp-dayopen [data-wppass="r1"]', 'title'), /off Tue Oct 20 and your list for a month/);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(80);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  console.log('✓ 6b Pass · a month: one click on a waiting brand, asks on a day, the card stays with Undo (back on its day)');
 
   // 7. The spread -------------------------------------------------------------------
   n = count('weekSpread');

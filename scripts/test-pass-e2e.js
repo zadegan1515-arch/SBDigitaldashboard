@@ -1,4 +1,4 @@
-// scripts/test-pass-e2e.js — Pass = two weeks off outreach, betting set aside (Leo, Oct 7 2026),
+// scripts/test-pass-e2e.js — Pass = a month off outreach (Leo, Nov 16 2026; two weeks since Oct 7), betting set aside (Leo, Oct 7 2026),
 // against the real handlers and a
 // throwaway Postgres (wiped): dayRecap, addWorkLog, setWorkNeedDone,
 // pickBuildIdea, deleteWorkLog.
@@ -86,10 +86,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(!p.ids.has('betco'), 'Best fit never picks betting');
     ok('betting is set aside: not in Brands not reached yet, not on any Best fit day');
 
-    // Pass: two weeks off every automatic pick.
+    // Pass: a month (30 days) off every automatic pick.
     const r = await data('passBrandToday', { brandId: 'hydra' });
     const days = (new Date(r.passedUntil).getTime() - Date.now()) / 864e5;
-    assert.ok(days > 13.9 && days <= 14, 'passed for 14 days, got ' + days);
+    assert.ok(days > 29.9 && days <= 30, 'passed for 30 days, got ' + days);
+    assert.equal(r.passDays, 30);
     assert.ok(!(await nb()).includes('hydra'), 'passed brand not offered');
     p = await planned();
     assert.ok(!p.ids.has('hydra'), 'passed brand on no day');
@@ -98,12 +99,12 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(!(await nb()).includes('hydra'), 'still out after the day it was passed');
     p = await planned();
     assert.ok(!p.ids.has('hydra'), 'still on no day after the day it was passed');
-    ok('Pass keeps the brand out for two weeks, not just today');
+    ok('Pass keeps the brand out for a month, not just today');
 
-    // Two weeks later it is back by itself.
+    // A month later it is back by itself.
     await prisma.brand.update({ where: { id: 'hydra' }, data: { passedUntil: new Date(Date.now() - 1000) } });
-    assert.ok((await nb()).includes('hydra'), 'back after two weeks');
-    ok('after two weeks it comes back on its own');
+    assert.ok((await nb()).includes('hydra'), 'back after the month');
+    ok('after the month it comes back on its own');
 
     // A hand add ends the pass.
     await data('passBrandToday', { brandId: 'hydra' });

@@ -5,7 +5,7 @@
 // here: which past days it looks at, what counts as not sent (a person in
 // the day's queue who never went; a pinned or shown brand that sent
 // nobody), and what stays put and why (archived, passed that day or inside
-// a Pass's two weeks, planned elsewhere, nobody left, day full), and that a
+// a Pass still running, planned elsewhere, nobody left, day full), and that a
 // part-sent brand's rest moves to the next sending day only — and where
 // the moved ones land on the new day (carry-front: half-sent first, then
 // the brands planned on the day they missed, then the day's own pins, then
@@ -146,7 +146,7 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   is('a brand deleted since is skipped quietly', [unknown.moved, unknown.left, unknown.unstamp], [[], [], []])
 }
 
-// ---- a Pass holds for its two weeks (Leo, Oct 7 2026) ------------------------
+// ---- a Pass holds until it ends (Leo, Oct 7 2026; a month since Nov 16 2026) ---
 {
   const unsent = new Map([['p', { from: '2026-10-07', stamped: [] }], ['q', { from: '2026-10-07', stamped: [] }]])
   const F = (name, o = {}) => ({ name, refusal: null, passedOn: '2026-10-06', pinnedOn: null, people: 3, ...o })

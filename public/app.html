@@ -1137,7 +1137,9 @@
   .wp-again-who .sd-dim{font-size:12.5px}
   .sd-tag.again{color:#c9b3ff;border-color:rgba(157,122,255,.4)}
   .wp-b-act,.wp-dc-act{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  .wp-b-where{margin-top:auto;padding-top:2px}
+  .wp-b-where{margin-top:auto;padding-top:2px;display:flex;align-items:center;gap:8px;min-height:28px}
+  .wp-b-where .wp-status{min-width:0}
+  .wp-pass.sm{margin-left:auto;flex:none;font-size:12.5px;padding:3px 10px;min-height:26px;border-radius:8px}
   .wp-b-act{margin-top:auto}
   .wp-b-where + .wp-b-act{margin-top:0}
   .wp-status{font-size:13.5px;font-weight:700}
@@ -1149,6 +1151,7 @@
   .wp-daybtn.anyway{color:#eec777;border-color:rgba(232,182,76,.45)}
   .wp-rm{background:transparent;color:var(--ink-3);font-weight:600}
   .wp-rm:hover:not(:disabled){color:#f2918c;border-color:rgba(240,113,107,.5)}
+  .wp-rm.wp-pass:hover:not(:disabled){color:#eec777;border-color:rgba(232,182,76,.5)}
   .wp-addbtn{background:var(--accent);border-color:var(--accent);color:#fff}
   .wp-addbtn.anyway{background:transparent;color:#eec777;border-color:rgba(232,182,76,.5)}
   .wp-daybtn:disabled,.wp-rm:disabled,.wp-addbtn:disabled{opacity:.55;cursor:default}
@@ -5565,13 +5568,27 @@ document.addEventListener('click', function (ev) {
   }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
 
+// How long a Pass keeps a brand off outreach (the server's PASS_DAYS = 30;
+// Leo, Nov 16 2026: "if i dont want a brand can i pass them for a month" —
+// it was two weeks). Every Pass button and toast words it from here.
+var PASS_WORD = 'a month';
+// "Dec 16" — the day a Pass ends, from passBrandToday's passedUntil.
+function passBackOn(r) {
+  var d = r && r.passedUntil ? new Date(r.passedUntil) : null;
+  return d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : '';
+}
+function passToast(name, r) {
+  var back = passBackOn(r);
+  return name + ' passed — off outreach for ' + PASS_WORD + (back ? ', back ' + back : '');
+}
+
 // Outreach → LinkedIn: Pass a whole brand for today.
 document.addEventListener('click', function (ev) {
   var el = ev.target.closest('[data-oqbpass]');
   if (!el) return;
   el.disabled = true;
   api('passBrandToday', { brandId: el.getAttribute('data-oqbpass') }).then(function (r) {
-    toast((r.name || 'Brand') + ' passed — off outreach for 2 weeks' + (r.unqueued ? ' — ' + r.unqueued + ' back in the pool' : ''));
+    toast(passToast(r.name || 'Brand', r) + (r.unqueued ? ' — ' + r.unqueued + ' back in the pool' : ''));
     loadOutreach();
   }).catch(function (err) { el.disabled = false; toast(err.message); });
 });
@@ -8456,7 +8473,7 @@ document.getElementById('cover-card').addEventListener('click', function (e) {
 var SUP = { data: null, sets: {}, err: null, againOpen: false, dead: null, deadTick: {}, deadErr: null, floor: null };
 var SUP_TURN = 0;
 var SUP_LABEL = {
-  ready: 'Ready to go out', short: 'Short on people to go out', none: 'Nobody to reach yet', pass: 'On a two-week Pass',
+  ready: 'Ready to go out', short: 'Short on people to go out', none: 'Nobody to reach yet', pass: 'On a Pass',
   fnew: 'Not read by the LinkedIn fill yet', fagain: 'Read again by the fill', freread: 'One more read on the fill — still need people',
   again: 'Reach out again', giant: 'Giants held back', small: 'Too small, held back', skip: 'In a Skip category'
 };
@@ -8516,7 +8533,7 @@ function supRender() {
     '<div class="su-sub" title="Never reached, nothing holding them back, and enough people with a LinkedIn or an email to go out whole">' +
       (d.readyPeople ? 'about ' + d.readyPeople + ' people · ' + plural(days, 'sending day') + ' at ' + per : 'nobody ready yet') + '</div>' +
     (n('ready') ? supShowBtn('ready', 'Show them') : '') +
-    (n('pass') ? '<div class="su-foot">' + n('pass') + ' more on a two-week Pass ' + supShowBtn('pass') + '</div>' : '') +
+    (n('pass') ? '<div class="su-foot">' + n('pass') + ' more on a Pass ' + supShowBtn('pass') + '</div>' : '') +
   '</div>';
 
   var fillNote = [
@@ -10253,7 +10270,7 @@ function bpOff() {
   // Off today is the Pass alone (passBrandToday unpins and un-stamps it
   // itself); a later day just comes off.
   (today ? api('passBrandToday', { brandId: id }) : api('planRemoveBrand', { date: key, brandId: id })).then(function (x) {
-    var text = today ? 'Passed — off outreach for 2 weeks' : 'Off ' + W;
+    var text = today ? 'Passed — off outreach for ' + PASS_WORD : 'Off ' + W;
     text += x.unqueued ? ' · ' + sdPlural(x.unqueued, 'person', 'people') + ' back in the pool.' : '.';
     toast(name + ' — ' + text);
     bpDone(id, text, false, !!x.unqueued);
@@ -16143,7 +16160,7 @@ function sdMove(id, name, from, to) {
       if (res) sdTakeResults(to, [res]);
       toast(name + ' → ' + sdDayTag(to) + (res ? ': ' + sdOutcome(res) : ''));
     } else {
-      toast(name + (offToday ? ' passed — off outreach for 2 weeks' : ' is off the schedule') +
+      toast((offToday ? passToast(name, r) : name + ' is off the schedule') +
         (r.unqueued ? ' · ' + sdPlural(r.unqueued, 'person', 'people') + ' back in the pool' : ''));
     }
     return sdRefresh();
@@ -16348,6 +16365,9 @@ function sdPinnedCard(p, key, i, n) {
     (isToday && p.waits ? '<button class="btn-ghost sd-sm" data-sdsendnow="' + esc(p.id) + '" data-sdn="' + esc(p.name) + '" title="Put its people in today’s LinkedIn list now, past the ' + sdCap() + '">Send today anyway</button>' : '') +
     (p.state === 'going' && short ? sdLiLink(p) : '') +
     (SD_FIXABLE[p.reason] ? '<button class="btn-ghost sd-sm" data-sdsu="' + esc(p.externalId || '') + '" data-suname="' + esc(p.name) + '">SponsorUnited ↗</button>' : '') +
+    // Not now for a planned brand too (Leo, Nov 16 2026): off this day and
+    // off outreach for a month, back by itself. Not once it has sent today.
+    (p.state !== 'sent' ? '<button class="btn-ghost sd-sm" data-stoday="' + esc(p.id) + '" data-sn="' + esc(p.name) + '" title="Not now — off this day and off outreach for ' + PASS_WORD + ', then it comes back by itself">Pass for ' + PASS_WORD + '</button>' : '') +
     sdArchiveBtn(p.id, p.name, key);
   return sdCard({
     id: p.id, name: p.name, from: key, blocked: p.state === 'blocked', body: body,
@@ -16377,10 +16397,11 @@ function sdAutoCard(b, key, isToday) {
     (pp.names.length ? ' · ' + sdNames(pp.names) : '') +
     (b.later ? ' <span class="sd-dim" title="Ready too, but past the day’s ' + sdCap() + ' — they go out next time">+' + b.later + ' next time</span>' : '') +
   '</div>';
-  // × on any day's automatic row = Not now: a Pass, off outreach for two
-  // weeks (Leo, Oct 7 2026), so a brand can come off Wednesday's list
-  // before the plan goes to Zach. Move to… pins it elsewhere instead.
-  var x = '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not now — off outreach for 2 weeks" aria-label="Not now: pass ' + esc(b.name) + ' for 2 weeks">×</button>';
+  // × on any day's automatic row = Not now: a Pass, off outreach for a
+  // month (Leo, Oct 7 2026: two weeks; Nov 16 2026: a month), so a brand
+  // can come off Wednesday's list before the plan goes to Zach. Move to…
+  // pins it elsewhere instead.
+  var x = '<button class="btn-ghost sd-cardx" data-stoday="' + esc(b.id) + '" data-sn="' + esc(b.name) + '" title="Not now — off outreach for ' + PASS_WORD + '" aria-label="Not now: pass ' + esc(b.name) + ' for ' + PASS_WORD + '">×</button>';
   var menu = '<div class="sd-menu-row">' + sdMoveSel(b.id, b.name, '', key, isToday && b.inQueue) + '</div>' +
     (sdIsShort(SCHED.labels[b.id]) ? sdLiLink(b) : '') +
     sdArchiveBtn(b.id, b.name, '');
@@ -18699,14 +18720,14 @@ var SCHED_DRAG = null;
       return;
     }
     if ((t = e.target.closest('[data-sdseecat]'))) { e.preventDefault(); sdOpenCat(t.getAttribute('data-sdseecat'), true); return; }
-    // Not now (an automatic row's ×, any day): a Pass, off outreach for
-    // two weeks and back by itself — which is the whole point of it being
-    // separate from Archive.
+    // Not now (an automatic row's ×, any day; a pinned card's ⋯ → Pass for
+    // a month): a Pass, off outreach for a month and back by itself —
+    // which is the whole point of it being separate from Archive.
     if ((t = e.target.closest('[data-stoday]'))) {
       var tname = t.getAttribute('data-sn');
       t.disabled = true;
-      api('passBrandToday', { brandId: t.getAttribute('data-stoday') }).then(function () {
-        toast('Passed ' + tname + ' — off outreach for 2 weeks');
+      api('passBrandToday', { brandId: t.getAttribute('data-stoday') }).then(function (r) {
+        toast(passToast(tname, r));
         return sdRefresh();
       }).catch(function (err) { toast(err.message); sdRefresh(); });
       return;
@@ -19533,7 +19554,7 @@ function targetRow(t) {
           '<button class="btn-ghost mini" data-act="withdrew" title="Withdrew the invite on LinkedIn? Logs it. Sent today: the send is uncounted. Older: it still counts as sent — Re-queue brings them back">Withdrew</button>' : '') +
       '<button class="btn-ghost mini" data-act="addperson" title="Queue another person at this brand — the next decision maker steps in">+ Person</button>' +
       '<button class="btn-ghost mini" data-act="brand" data-brand="' + esc(t.brandId) + '">Brand →</button>' +
-      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take the whole company off today’s list — nobody deleted, it can come back tomorrow (Pass brand = two weeks)">Off queue</button>' : '') +
+      (isPre ? '<button class="btn-ghost mini" data-act="unqueue" title="Take the whole company off today’s list — nobody deleted, it can come back tomorrow (Pass brand = ' + PASS_WORD + ')">Off queue</button>' : '') +
       (t.status !== 'declined' && t.status !== 'dead' && t.status !== 'converted' && t.status !== 'passed'
         ? '<button class="btn-ghost mini danger" data-act="pass" title="Pass on THIS person only — the brand stays in play and another person can take the slot">Pass</button>' : '') +
     '</div>' +
@@ -19664,7 +19685,7 @@ function oqBrandCard(g) {
       // Leo, Oct 6 2026: "a pass button on the brand as a whole" — the
       // whole brand off today's list (passBrandToday: unsent people back
       // to the pool, nothing deleted; it can come up another day).
-      (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off outreach for 2 weeks. Its people go back to the pool.">Pass brand</button>' : '') +
+      (c.sent < c.total ? '<button class="btn-ghost oq-bpass" data-oqbpass="' + esc(g.brandId) + '" title="Take the whole brand off outreach for ' + PASS_WORD + '. Its people go back to the pool.">Pass brand</button>' : '') +
     '</div>' +
     '<div class="oq-rows">' + rows.map(targetRow).join('') + '</div>' +
   '</div>';
@@ -26226,13 +26247,15 @@ function wpDayCard(p, day, byId, ag, isNew) {
       return '<button class="wp-daybtn" data-wpmove="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpto="' + esc(x.date) + '" data-wpn="' + esc(p.name) + '" title="Move it to ' + esc(sdDayName(x.date)) + '"' + (busy ? ' disabled' : '') + '>→ ' + esc(wpShort(x.date)) + '</button>';
     }).join('') +
     '<button class="wp-rm" data-wpoff="' + esc(p.id) + '" data-wpday="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '" title="Take it off ' + esc(sdDayName(day.date)) + (a ? '' : ' — it waits on your list again') + '"' + (busy ? ' disabled' : '') + '>' + (r || !a ? '↩ Back to list' : '× Off the day') + '</button>';
+  // Pass sits at the end of the "N going" line, as on a list card's status line.
+  var pass = isNew || p.state === 'sent' ? '' : wpPassBtn(p.id, p.name, day.date, busy, true);
   return '<div class="wp-dc' + (isNew ? ' new' : '') + (busy ? ' busy' : '') + (!isNew && p.state === 'blocked' ? ' blocked' : '') + '"' +
       (isNew ? '' : ' draggable="true" data-wpdrag="' + esc(p.id) + '" data-wpfrom="' + esc(day.date) + '" data-wpn="' + esc(p.name) + '"') + '>' +
     '<div class="wp-dc-h">' + (rank ? '<span class="wp-dc-rank" title="Its place on your list">#' + rank + '</span>' : '') +
       '<a href="#" class="wp-dc-name" data-wpopen="' + esc(p.id) + '" title="' + esc(p.name) + '">' + esc(p.name) + '</a>' +
       (fit != null ? '<span class="wp-fitbox sm" title="Brand Fit">' + fit + '</span>' : '') + '</div>' +
     '<div class="wp-dc-meta">' + line + (a ? ' <span class="sd-tag again" title="Reached before — these are its decision makers nobody has contacted">reach again</span>' : '') +
-      (p.big ? ' · <span title="A big company: works 10 people at once">big</span>' : '') + rbTag(p.id) + '</div>' +
+      (p.big ? ' · <span title="A big company: works 10 people at once">big</span>' : '') + rbTag(p.id) + pass + '</div>' +
     '<div class="wp-dc-act">' + acts + '</div>' +
   '</div>';
 }
@@ -26259,7 +26282,7 @@ function wpListWithGhosts() {
   Object.keys(WP.gone).map(function (id) { return WP.gone[id]; })
     .filter(function (g) { return now - g.at < WP_GONE_MS && !list.some(function (r) { return r.id === g.row.id; }); })
     .sort(function (a, b) { return a.idx - b.idx; })
-    .forEach(function (g) { list.splice(Math.min(g.idx, list.length), 0, Object.assign({}, g.row, { ghost: true })); });
+    .forEach(function (g) { list.splice(Math.min(g.idx, list.length), 0, Object.assign({}, g.row, { ghost: true, ghostPass: !!g.pass, ghostBack: g.back || '' })); });
   return list;
 }
 function wpSec(title, n, sub, cards, more) {
@@ -26367,7 +26390,7 @@ function wpCardHtml(r, opts) {
   if (r.ghost) {
     return '<div class="wp-b ghost" data-wpid="' + esc(r.id) + '"><div class="wp-b-h"><span class="wp-b-rank">#' + r.rank + '</span>' +
       '<span class="wp-b-name">' + esc(r.name) + '</span></div>' +
-      '<div class="wp-b-act"><span class="sd-dim">Taken off your list.</span>' +
+      '<div class="wp-b-act"><span class="sd-dim">' + (r.ghostPass ? 'Passed for ' + PASS_WORD + (r.ghostBack ? ' — back ' + esc(r.ghostBack) : '') + '.' : 'Taken off your list.') + '</span>' +
       '<button class="btn-ghost sd-sm" data-wpundo1="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '">Undo</button></div></div>';
   }
   var busy = !!WP.pending[r.id];
@@ -26387,9 +26410,11 @@ function wpCardHtml(r, opts) {
       (r.going ? '<span>' + sdPlural(r.going, 'person', 'people') + '</span>' : '') + sdLabel(r.label) +
       (r.how === 'hand' ? '<span class="sd-tag day" title="You put it on the list">added by you</span>' : '') +
       (r.big ? '<span class="sd-tag" title="A big company: works 10 people at once">big</span>' : '') + rbTag(r.id) + '</div>' +
-    '<div class="wp-b-where">' + status + '</div>' +
+    // Pass sits on the status line (the day buttons' row is full as it is).
+    '<div class="wp-b-where">' + status +
+      (r.where === 'waiting' || r.where === 'day' ? wpPassBtn(r.id, r.name, r.where === 'day' ? r.day : '', busy, true) : '') + '</div>' +
     '<div class="wp-b-act">' + days + '<span class="sd-sp"></span>' +
-      '<button class="wp-rm" data-wprm="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '"' + (busy ? ' disabled' : '') + ' title="Take it off your list">Remove</button></div>' +
+      '<button class="wp-rm" data-wprm="' + esc(r.id) + '" data-wpn="' + esc(r.name) + '"' + (busy ? ' disabled' : '') + ' title="Take it off your list for good">Remove</button></div>' +
   '</div>';
 }
 
@@ -26736,9 +26761,68 @@ function wpRemove(id, name) {
   });
 }
 
+// Pass (Leo, Nov 16 2026: "if i dont want a brand can i pass them for a
+// month"): not now — off its day and off the list for a month, then back
+// by itself (Remove is for good). passBrandToday, the site's one Pass.
+function wpPassBtn(id, name, day, busy, slim) {
+  return '<button class="wp-rm wp-pass' + (slim ? ' sm' : '') + '" data-wppass="' + esc(id) + '" data-wpn="' + esc(name) + '" data-wpday="' + esc(day || '') + '"' + (busy ? ' disabled' : '') +
+    ' title="Not now — off ' + (day ? esc(sdDayName(day)) + ' and ' : '') + 'your list for ' + PASS_WORD + ', then it comes back by itself">Pass · ' + PASS_WORD + '</button>';
+}
+// On a day already: it asks, and comes off the day. The card stays where
+// it was with Undo (back on the list, and on the day it was on).
+function wpPass(id, name, day) {
+  var rows = wpRows();
+  var idx = -1;
+  rows.forEach(function (x, i) { if (x.id === id) idx = i; });
+  var r = idx >= 0 ? rows[idx] : null;
+  var a = wpAgainById()[id];
+  day = day || (r && r.where === 'day' ? r.day : '') || '';
+  if (day && !confirm('Pass ' + name + ' for ' + PASS_WORD + '?\n\nIt comes off ' + sdDayName(day) + ' and stays off outreach until then. Nobody is deleted.')) return;
+  return wpDo({
+    ids: [id], fn: 'passBrandToday', args: { brandId: id },
+    local: function () {
+      if (r) {
+        WP.gone[id] = { row: Object.assign({}, r), idx: idx, at: Date.now(), pass: true, day: day, back: '' };
+        WP.data.bank.rows = rows.filter(function (x) { return x.id !== id; });
+        setTimeout(function () { if (WP.gone[id] && Date.now() - WP.gone[id].at >= WP_GONE_MS) { delete WP.gone[id]; wpRenderList(); } }, WP_GONE_MS + 50);
+      }
+      wpDays().forEach(function (d) { d.pinned = (d.pinned || []).filter(function (p) { return p.id !== id; }); });
+      if (a) a.pinnedOn = null;
+    },
+    done: function (res) {
+      if (WP.gone[id]) WP.gone[id].back = passBackOn(res);
+      return passToast(name, res);
+    }
+  });
+}
+// Undo of a Pass: the Pass lifted, and back on the day it was on.
+function wpUndoPass(id, name, g) {
+  var day = g.day;
+  return wpDo({
+    ids: [id],
+    run: function () {
+      return api('passBrandToday', { brandId: id, on: false }).then(function () {
+        return day ? api('planAddBrands', { date: day, brandIds: [id] }) : null;
+      });
+    },
+    local: function () {
+      if (!wpById()[id]) {
+        var row = Object.assign({}, g.row, { where: 'waiting', day: null });
+        WP.data.bank.rows.splice(Math.min(g.idx, WP.data.bank.rows.length), 0, row);
+      }
+    },
+    done: function (res) {
+      var back = res && res.results && res.results[0];
+      if (day && back && !back.added) return name + ' is back on your list — it can’t go on ' + sdDayName(day) + (back.reasonText ? ': ' + back.reasonText : '');
+      return name + ' is back' + (day ? ' on ' + sdDayName(day) : ' on your list');
+    }
+  });
+}
+
 function wpUndoRemove(id, name) {
   var g = WP.gone[id];
   delete WP.gone[id];
+  if (g && g.pass) return wpUndoPass(id, name, g);
   return wpDo({
     ids: [id], fn: 'weekBankPutBack', args: { brandIds: [id] },
     local: function () {
@@ -26872,6 +26956,7 @@ function wpToggleDay(date) {
     if ((t = e.target.closest('[data-wpaddday]'))) { wpAddDay(t.getAttribute('data-wpaddday'), t.getAttribute('data-wpn'), t.getAttribute('data-wpto'), t.hasAttribute('data-wpgiant')); return; }
     if ((t = e.target.closest('[data-wpmove]'))) { wpMoveCard(t.getAttribute('data-wpmove'), t.getAttribute('data-wpn'), t.getAttribute('data-wpfrom'), t.getAttribute('data-wpto')); return; }
     if ((t = e.target.closest('[data-wpoff]'))) { wpOff(t.getAttribute('data-wpoff'), t.getAttribute('data-wpn'), t.getAttribute('data-wpday')); return; }
+    if ((t = e.target.closest('[data-wppass]'))) { wpPass(t.getAttribute('data-wppass'), t.getAttribute('data-wpn'), t.getAttribute('data-wpday')); return; }
     if ((t = e.target.closest('[data-wprm]'))) { wpRemove(t.getAttribute('data-wprm'), t.getAttribute('data-wpn')); return; }
     if ((t = e.target.closest('[data-wpundo1]'))) { wpUndoRemove(t.getAttribute('data-wpundo1'), t.getAttribute('data-wpn')); return; }
     if ((t = e.target.closest('[data-wpputback]'))) {
@@ -27518,7 +27603,7 @@ function renderNextBest() {
               ? '<button class="btn-draft" data-nbperson="' + esc(b.id) + '" title="Add their person right here — a decision-maker title + LinkedIn queues them">+ Add person</button>'
               : '<span class="fit">' + b.contacts + ' contact' + (b.contacts === 1 ? '' : 's') + '</span>' +
                 '<button class="btn-draft" data-nbq="' + esc(b.id) + '">+ Add to today</button>') +
-            '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Off outreach for 2 weeks — adding it by hand brings it back sooner">Pass</button>' +
+            '<button class="btn-ghost" data-nbtoday="' + esc(b.id) + '" title="Off outreach for ' + PASS_WORD + ' — adding it by hand brings it back sooner">Pass</button>' +
             '<button class="btn-ghost danger" data-nbp="' + esc(b.id) + '" title="Archive — never suggested again unless you bring it back on its brand page">Archive</button>' +
           '</div>' +
         '</div>' +
@@ -27545,7 +27630,7 @@ document.getElementById('nextbest').addEventListener('click', function (e) {
   if (nbToday) {
     nbToday.disabled = true;
     api('passBrandToday', { brandId: nbToday.getAttribute('data-nbtoday') }).then(function (r) {
-      toast(r.name + ' passed — off outreach for 2 weeks');
+      toast(passToast(r.name, r));
       renderNextBest();
     }).catch(function (err) { toast(err.message); nbToday.disabled = false; });
     return;
@@ -28066,7 +28151,7 @@ document.getElementById('targets').addEventListener('click', function (e) {
   }
 
   // Off queue = the whole COMPANY steps out of today's list (Leo; today
-  // only since Oct 12 2026 — Pass brand is the two weeks). Nobody deleted.
+  // only since Oct 12 2026 — Pass brand is the month). Nobody deleted.
   // In place: every unsent row of the brand vanishes.
   if (act === 'unqueue') {
     var uqBrand = TARGET_CACHE[id] && TARGET_CACHE[id].brandId;

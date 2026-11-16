@@ -138,9 +138,9 @@ export function carryTimes(
 // null. passedOn: the day Pass today was pressed on it, if any. pinnedOn:
 // a day from today on it is already planned for (not one being emptied).
 // people: who would go out if it moved.
-// passedUntil: the last day of a Pass's two weeks still running (Leo, Oct
-// 7 2026: "it should not show up in the outreach tab again for at least
-// two weeks"), else null — a brand the Schedule showed on another day
+// passedUntil: the last day of a Pass still running (a month since Nov 16
+// 2026; Leo, Oct 7 2026: "it should not show up in the outreach tab again
+// for at least two weeks"), else null — a brand the Schedule showed on another day
 // never carries back in through it.
 export type CarryFacts = {
   name: string; refusal: string | null; passedOn: string | null; pinnedOn: string | null; people: number

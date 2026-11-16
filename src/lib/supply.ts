@@ -27,7 +27,7 @@ import { markOutcome, type LiMark } from './li-sweep'
 //   ready    the queue can pick it and it has enough people to go out whole
 //   short    the queue can pick it, but fewer reachable people than it works
 //   held     never reached, but a rule holds it back (holdsOf)
-//   pass     never reached, on a two-week Pass Leo gave it
+//   pass     never reached, on a Pass Leo gave it (a month)
 //   reached  reached out to before — only by hand, or Reach out again
 //   off      archived, do-not-email, said stop, not sold in the US, closed
 export type SupplyState = 'ready' | 'short' | 'held' | 'pass' | 'reached' | 'off'

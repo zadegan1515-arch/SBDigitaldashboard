@@ -498,11 +498,17 @@ async function main() {
   // 7. Not now on any day; today's waiting note ------------------------
   const x2 = '[data-drop="2026-10-08"] [data-stoday="a2"]';
   await page.waitForSelector(x2);
-  assert.match(await page.getAttribute(x2, 'title'), /Not now — off outreach for 2 weeks/);
+  assert.match(await page.getAttribute(x2, 'title'), /Not now — off outreach for a month/);
   await page.click(x2);
   await waitFor(() => count('passBrandToday') === 1, 'Not now on a later day');
   assert.deepEqual(last('passBrandToday').args, { brandId: 'a2' });
   assert.ok(await page.$('[data-drop="2026-10-07"] [data-stoday="a1"]'), 'today\'s automatic row keeps its ×');
+  // A planned brand's ⋯ has it too (Leo, Nov 16 2026: "if i dont want a brand can i pass them for a month").
+  const pinPass = await page.$$eval('.sd-card [data-sdunpin]', (els) => els.map((x) => {
+    var b = x.closest('.sd-card').querySelector('button[data-stoday="' + x.getAttribute('data-sdunpin') + '"]');
+    return b ? b.textContent.trim() : null;
+  }));
+  assert.ok(pinPass.length && pinPass.every((t) => t === 'Pass for a month'), 'every planned card offers Pass for a month: ' + JSON.stringify(pinPass));
   waitCard = true;
   await page.evaluate(() => sdRefresh());
   await page.waitForFunction(() => /planned brand waits/.test(document.querySelector('[data-drop="2026-10-07"]').textContent));

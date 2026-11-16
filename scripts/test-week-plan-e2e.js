@@ -5,6 +5,9 @@
 //     first — never a brand reached, archived, a held giant or a Skip
 //     category — up to its number; hand adds count toward it; one taken off
 //     stays off until put back;
+//   • Pass = a month (Leo, Nov 16 2026): a passed brand is off the list and
+//     off its day until the Pass ends — one added by hand too, and it is
+//     still his after; putting it on the list by hand ends the Pass;
 //   • the spread: a preview writes nothing; each brand on one day, every
 //     day within its room, the top three on three different days; Apply
 //     pins exactly the preview and those days take only the list — no
@@ -169,6 +172,49 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(browse.brands.every(b => b.category === 'electrolytes'), 'that category only');
     assert.ok(browse.setAside >= 1, 'archived / resting counted, not listed');
     ok('browse a category');
+
+    // 1b. Pass = a month (Leo, Nov 16 2026: "if i dont want a brand can i
+    // pass them for a month") ------------------------------------------------
+    const pb = top[1], ph = top[2];
+    let pr = await data('passBrandToday', { brandId: pb });
+    const pdays = (new Date(pr.passedUntil).getTime() - Date.now()) / 864e5;
+    assert.ok(pdays > 29.9 && pdays <= 30 && pr.passDays === 30, 'a Pass is a month (30 days), got ' + pdays);
+    assert.equal((await data('getOutreachPlan', {})).queueRules.passDays, 30, 'the Schedule knows how long a Pass is');
+    wb = await data('weekBank', {});
+    assert.ok(!ids().includes(pb), 'a passed brand is off the list');
+    assert.equal(wb.bank.rows.length, 12, 'the others stay');
+    // One Leo added by hand: off the list while passed, still his after.
+    await data('weekBankAdd', { brandIds: [ph] });
+    await data('passBrandToday', { brandId: ph });
+    wb = await data('weekBank', {});
+    assert.ok(!ids().includes(ph), 'a brand added by hand is off the list too while on a Pass');
+    await prisma.brand.update({ where: { id: ph }, data: { passedUntil: new Date(Date.now() - 1000), passedTodayAt: new Date(Date.now() - 31 * 864e5) } });
+    wb = await data('weekBank', {});
+    assert.equal(wb.bank.rows.find(r => r.id === ph)?.how, 'hand', 'back once the month is over, still added by you');
+    // Putting a passed brand on the list by hand ends the Pass.
+    add = await data('weekBankAdd', { brandIds: [pb] });
+    assert.deepEqual(add.unpassed.map(a => a.id), [pb], 'the add says whose Pass it ended');
+    assert.equal((await prisma.brand.findUnique({ where: { id: pb } })).passedUntil, null, 'the Pass is over');
+    wb = await data('weekBank', {});
+    assert.equal(wb.bank.rows.find(r => r.id === pb)?.where, 'waiting', 'and it shows on the list again');
+    // On a day: the Pass takes it off the day; lifted (Undo), it is back on the list.
+    const pday = wb.days[0].date;
+    await data('planAddBrands', { date: pday, brandIds: [pb] });
+    wb = await data('weekBank', {});
+    assert.ok(wb.days.find(d => d.date === pday).pinned.some(x => x.id === pb), 'on a day');
+    await data('passBrandToday', { brandId: pb });
+    wb = await data('weekBank', {});
+    assert.ok(!wb.days.find(d => d.date === pday).pinned.some(x => x.id === pb) && !ids().includes(pb), 'passed: off its day and off the list');
+    await data('passBrandToday', { brandId: pb, on: false });
+    wb = await data('weekBank', {});
+    assert.equal(wb.bank.rows.find(r => r.id === pb)?.where, 'waiting', 'the Pass lifted: back on the list');
+    // (as it was: the two hand adds are system picks again)
+    await data('weekBankRemove', { brandIds: [pb, ph] });
+    await data('weekBankPutBack', { brandIds: [pb, ph] });
+    wb = await data('weekBank', {});
+    assert.equal(wb.bank.rows.length, 13);
+    assert.ok(wb.bank.rows.every(r => r.how === 'auto' && r.where === 'waiting'), 'the list as it was');
+    ok('Pass = a month: off the list and off its day until it ends (a hand add too, still yours after); a hand add ends it; lifted, it is back');
 
     // 2. The spread ----------------------------------------------------------
     const planBefore = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } });
