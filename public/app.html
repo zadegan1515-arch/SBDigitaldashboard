@@ -1698,7 +1698,30 @@
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
-  /* Outreach → Instantly (ins*): its own page. Reuses the Hunter card's table and tile pieces. */
+  /* Email → Templates (tpl*): a row per template, one open at a time (Leo, Nov 16 2026) */
+  .tpl-tools{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .tpl-tools input{width:280px;max-width:100%;padding:9px 12px;font-size:14.5px}
+  .tpl-h{font-size:12.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);margin:26px 0 10px}
+  .tpl-list{display:flex;flex-direction:column;gap:8px}
+  .tpl-item{padding:0;overflow:hidden}
+  .tpl-row{display:flex;gap:10px 16px;align-items:center;width:100%;padding:14px 18px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+  .tpl-row:hover{background:var(--surface-2)}
+  .tpl-name{font-size:16px;font-weight:650;color:var(--ink-1);flex:0 0 300px;max-width:45%}
+  .tpl-subj{font-size:14px;color:var(--ink-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tpl-tag{font-size:12.5px;font-weight:600;border-radius:99px;padding:3px 11px;border:1px solid var(--border);color:var(--ink-3);white-space:nowrap}
+  .tpl-tag.own{color:var(--good);border-color:rgba(62,207,142,.45)}
+  .tpl-tag.draft{color:var(--warn);border-color:rgba(232,182,76,.45)}
+  .tpl-chev{color:var(--ink-3);font-size:13px;width:14px;text-align:center}
+  .tpl-ed{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px 22px;padding:4px 18px 18px;border-top:1px solid var(--border)}
+  .tpl-ed label{display:block;font-size:12.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:14px 0 6px}
+  .tpl-ed input,.tpl-ed textarea{width:100%;box-sizing:border-box;background:var(--surface-0);color:var(--ink-1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font:inherit;font-size:14.5px;line-height:1.5}
+  .tpl-ed textarea{min-height:330px;resize:vertical}
+  .tpl-pv{background:var(--surface-0);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:14.5px;line-height:1.5;color:var(--ink-1);white-space:pre-wrap;overflow-wrap:anywhere}
+  .tpl-pv b{display:block;margin-bottom:10px}
+  .tpl-btns{grid-column:1/-1;display:flex;gap:8px 10px;align-items:center;flex-wrap:wrap}
+  .tpl-btns .fe-dim{margin-left:auto}
+  @media (max-width:900px){.tpl-ed{grid-template-columns:minmax(0,1fr)}.tpl-name{flex-basis:auto;max-width:none}.tpl-subj{display:none}.tpl-btns .fe-dim{margin-left:0;flex-basis:100%}}
+  /* Email → Instantly (ins*): its own page. Reuses the Hunter card's table and tile pieces. */
   .ins-linkbar{margin-top:18px;padding:12px 18px;display:flex;gap:12px 16px;align-items:center;justify-content:space-between;flex-wrap:wrap;font-size:14px;color:var(--ink-2)}
   .ins-linkbar b{color:var(--ink-1)}
   .ins-head{display:flex;gap:14px 24px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;margin-bottom:22px}
@@ -2822,6 +2845,7 @@
         <button class="nav-item" data-view="zachtab">Deals</button>
         <button class="nav-item" data-view="brands">Brands</button>
         <button class="nav-item" data-view="outreach">Outreach</button>
+        <button class="nav-item" data-view="email-out">Email</button>
         <button class="nav-item" data-view="board">Show Board</button>
         <button class="nav-item" data-view="audience">Audience</button>
         <button class="nav-item" data-view="operations">Operations</button>
@@ -2996,17 +3020,23 @@
 
     <!-- INSTANTLY — cold email through Instantly (Leo, Nov 16 2026: "make this its own tab and make it all cleaner"; ins*, src/lib/instantly.ts) -->
     <section class="view page" id="instantly">
-      <div class="eyebrow">Outreach</div>
+      <div class="eyebrow">Email</div>
       <div id="ins-card"></div>
+    </section>
+
+    <!-- EMAIL → TEMPLATES — one first email per category + the follow-ups every category shares (Leo, Nov 16 2026; tpl*, src/lib/email-templates.ts) -->
+    <section class="view page" id="templates">
+      <div class="eyebrow">Email</div>
+      <div id="tpl-body"></div>
     </section>
 
     <!-- EMAIL OUTREACH -->
     <section class="view page" id="email-out">
-      <div class="eyebrow">Outreach</div>
+      <div class="eyebrow">Email</div>
       <h1>Email outreach</h1>
       <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
       <div id="fe-card"></div>
-      <!-- Cold email through Instantly has its own tab (Outreach → Instantly); this points there. -->
+      <!-- Cold email through Instantly has its own tab (Email → Instantly); this points there. -->
       <div class="panel ins-linkbar" id="ins-link">
         <span><b>Got their emails?</b> They go out from your Instantly campaign — nothing is sent from the dashboard.</span>
         <button class="btn-solid" id="ins-open">Open Instantly →</button>
@@ -3909,7 +3939,10 @@ function refreshAfterSponsorChange() {
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
   brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['discover', 'Discover'], ['clarify', 'Clarify']],
-  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['email-out', 'Email'], ['instantly', 'Instantly'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
+  outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
+  // Email (Leo, Nov 16 2026: "keep the Outreach tab but then I want a tab that says Email … put the Email and
+  // Instantly tabs there … a Template tab under the Email tab"): its own top tab after Outreach.
+  'email-out': [['email-out', 'Email'], ['instantly', 'Instantly'], ['templates', 'Templates']],
   board: [['board', 'Overview'], ['talks', 'Board codes'], ['requests', 'Requests'], ['shows', 'Shows']],
   audience: [['audience', 'Events'], ['attendees', 'Attendees'], ['segments', 'Segments']],
   operations: [['materials', 'Materials'], ['team', 'Team']],
@@ -3919,7 +3952,8 @@ var SUBTABS = {
 };
 var GROUP_OF = {
   brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
-  outreach: 'outreach', 'email-out': 'outreach', instantly: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
+  'email-out': 'email-out', instantly: 'email-out', templates: 'email-out',
+  outreach: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
   zachtab: 'zachtab', tracker: 'zachtab', intalks: 'zachtab', pipeline: 'zachtab', sponsorships: 'zachtab',
   audience: 'audience', attendees: 'audience', segments: 'audience',
@@ -6313,7 +6347,7 @@ function ztPanelHtml(p) {
     var sent = [p.emailedAt ? 'Emailed ' + shortDate(p.emailedAt) : '', p.emailReplyAt ? 'They replied by email ' + shortDate(p.emailReplyAt) : '',
       p.liSentAt ? 'Replied on LinkedIn ' + shortDate(p.liSentAt) : ''].filter(Boolean).join(' · ');
     out = h('Schedule the call', sent ? esc(sent) : '') +
-      '<div class="zt-callout call">' + (p.emailReplyAt ? 'They answered by email: reply in that thread (Outreach → Email) to get a time. ' : '') +
+      '<div class="zt-callout call">' + (p.emailReplyAt ? 'They answered by email: reply in that thread (the Email tab) to get a time. ' : '') +
         'Once they give you a time, pick the day and tick it. The call then shows in Needs action today on the day.</div>' +
       '<div class="zt-acts">' +
         '<label class="zt-step zt-stepdate' + (ZT_DATE[id] ? ' done' : '') + '">Day' +
@@ -11223,11 +11257,11 @@ function loadBrand(brandId, focusContactId) {
     });
     var brandEmailWords = brandEmail ? emailWords(brandEmail.t) : null;
     var introControl = brandEmailWords
-      ? '<button class="btn-ghost" id="b-openemail" style="margin-left:auto" title="Open Outreach → Email' +
+      ? '<button class="btn-ghost" id="b-openemail" style="margin-left:auto" title="Open the Email tab' +
           (brandEmailWords.pending ? ' — review it there, then Send. Nothing goes out until you do.' : '') + '">' +
           'Email to ' + esc((brandEmail.t.contact.name || '').split(' ')[0]) + ' — ' +
           esc(brandEmailWords.what + ' ' + brandEmailWords.state) + ' →</button>'
-      : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in Outreach → Email. It does not send.">Draft intro email</button>';
+      : '<button class="btn-ghost" id="b-draftintro" style="margin-left:auto" title="Writes an intro email for review in the Email tab. It does not send.">Draft intro email</button>';
     var outreach = b.targets.length
       ? '<div class="section-head" id="b-sec-outreach">Outreach <span class="n">' + esc(outreachCounts) + '</span>' +
         introControl + '</div>' +
@@ -11636,7 +11670,7 @@ function loadBrand(brandId, focusContactId) {
     if (di) di.onclick = function () {
       var btn = di; btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
       api('draftBrandIntro', { brandId: b.id }).then(function (r) {
-        toast('Intro drafted to ' + r.contact + ' (' + r.to + ') — NOT sent. Review it and hit Send in Outreach → Email.');
+        toast('Intro drafted to ' + r.contact + ' (' + r.to + ') — NOT sent. Review it and hit Send in the Email tab.');
         loadBrand(b.id);
       }).catch(function (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Draft intro email'; });
     };
@@ -20923,10 +20957,176 @@ function feOnChange(e) {
 }
 
 
+// ── Email → Templates ──────────────────────────────────────────────────────
+// Leo, Nov 16 2026: "a Template tab under the Email tab with templates and I
+// want you to separate by category". View `templates` (TPL / tpl*, .tpl- CSS;
+// rules in src/lib/email-templates.ts): the three emails every category
+// shares, then one first email per category, Top priority first. A row opens
+// its editor (one at a time): subject, body, a filled-in preview, Save, Copy,
+// Copy for Instantly ((NAME) / (BRAND) → Instantly's {{firstName}} /
+// {{companyName}}), Back to the standard text. Nothing sends or drafts from
+// here. Text typed but not saved survives every redraw (TPL.drafts).
+var TPL = { data: null, open: null, drafts: {}, q: '', busy: null, err: null };
+var TPL_SAMPLE = { name: 'Alex', brand: 'Liquid Sun' };
+
+function loadTemplates() {
+  var again = showView('templates');
+  var box = document.getElementById('tpl-body');
+  if (!again || !TPL.data) { if (!TPL.data) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>'; }
+  var mine = viewTurn('templates');
+  return api('listEmailTemplates').then(function (d) {
+    TPL.data = d; TPL.err = null;
+    if (mine()) tplRender();
+  }).catch(function (e) {
+    TPL.err = e.message || String(e);
+    if (mine()) tplRender();
+  });
+}
+function tplAll() { return TPL.data ? TPL.data.general.concat(TPL.data.categories) : []; }
+function tplFind(key) { return tplAll().filter(function (t) { return t.key === key; })[0] || null; }
+function tplName(t) { return t.category ? (CAT_NAMES[t.category] || t.category) : t.label; }
+// What's in the boxes for a template: the unsaved text, else what's saved.
+function tplNow(t) { return TPL.drafts[t.key] || { subject: t.subject, body: t.body }; }
+function tplDirty(t) { var d = TPL.drafts[t.key]; return !!d && (d.subject !== t.subject || d.body !== t.body); }
+function tplFill(x) {
+  return String(x || '').replace(/\(NAME\)|\[Name\]/gi, TPL_SAMPLE.name).replace(/\(BRAND\)|\[Brand\]/gi, TPL_SAMPLE.brand);
+}
+function tplInstantly(x) {
+  return String(x || '').replace(/\(NAME\)|\[Name\]/gi, '{{firstName}}').replace(/\(BRAND\)|\[Brand\]/gi, '{{companyName}}');
+}
+function tplTag(t) {
+  if (tplDirty(t)) return '<span class="tpl-tag draft">Not saved</span>';
+  return t.own ? '<span class="tpl-tag own">Yours' + (t.at ? ' · ' + esc(shortDate(t.at)) : '') + '</span>' : '<span class="tpl-tag">Standard</span>';
+}
+function tplPreview(t) {
+  var n = tplNow(t);
+  return '<b>' + esc(tplFill(n.subject)) + '</b>' + esc(tplFill(n.body));
+}
+function tplItem(t) {
+  var open = TPL.open === t.key, n = tplNow(t), busy = TPL.busy === t.key;
+  var h = '<div class="panel tpl-item" data-tplitem="' + esc(t.key) + '">' +
+    '<button class="tpl-row" data-tpl="open" data-key="' + esc(t.key) + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+      '<span class="tpl-name">' + esc(tplName(t)) + '</span>' +
+      '<span class="tpl-subj">' + esc(n.subject) + '</span>' +
+      '<span data-tpltag>' + tplTag(t) + '</span><span class="tpl-chev">' + (open ? '▾' : '▸') + '</span></button>';
+  if (open) {
+    h += '<div class="tpl-ed"><div>' +
+        '<label for="tpl-subject">Subject</label><input id="tpl-subject" data-tplin="subject" maxlength="200" value="' + esc(n.subject) + '">' +
+        '<label for="tpl-text">Email</label><textarea id="tpl-text" data-tplin="body" maxlength="8000">' + esc(n.body) + '</textarea>' +
+      '</div><div>' +
+        '<label>How it reads for ' + esc(TPL_SAMPLE.name) + ' at ' + esc(TPL_SAMPLE.brand) + '</label><div class="tpl-pv" id="tpl-pv">' + tplPreview(t) + '</div>' +
+      '</div><div class="tpl-btns">' +
+        '<button class="btn-solid" data-tpl="save"' + (tplDirty(t) && !busy ? '' : ' disabled') + '>' + (busy ? 'Saving…' : 'Save') + '</button>' +
+        '<button class="btn-ghost" data-tpl="copy">Copy</button>' +
+        '<button class="btn-ghost" data-tpl="copyins" title="(NAME) becomes {{firstName}}, (BRAND) becomes {{companyName}}">Copy for Instantly</button>' +
+        (tplDirty(t) ? '<button class="btn-ghost" data-tpl="discard">Discard changes</button>' : '') +
+        (t.own ? '<button class="btn-ghost" data-tpl="reset">Back to the standard text</button>' : '') +
+        '<span class="fe-dim">(NAME) = their first name · (BRAND) = the brand</span>' +
+      '</div></div>';
+  }
+  return h + '</div>';
+}
+function tplRender() {
+  var box = document.getElementById('tpl-body');
+  if (!box) return;
+  var head = '<div class="ins-head"><div><h1>Templates</h1>' +
+    '<div class="ins-sub">One first email per category, plus the follow-ups every category shares. Nothing is sent from here.</div></div></div>';
+  if (!TPL.data) {
+    box.innerHTML = head + '<div class="panel"><div class="empty"><p>' + (TPL.err ? 'Couldn’t read the templates: ' + esc(TPL.err) + ' <button class="su-show" data-tpl="retry">Try again</button>' : 'Loading…') + '</p></div></div>';
+    return;
+  }
+  var q = TPL.q.trim().toLowerCase();
+  var hit = function (t) { return !q || tplName(t).toLowerCase().indexOf(q) >= 0 || t.key === TPL.open; };
+  var h = head + '<div class="tpl-tools"><input class="inp" id="tpl-q" type="search" placeholder="Find a category…" value="' + esc(TPL.q) + '" aria-label="Find a category">' +
+    '<span class="fe-dim" id="tpl-count"></span></div>';
+  var gen = TPL.data.general.filter(hit);
+  if (gen.length) h += '<div class="tpl-h">Every category</div><div class="tpl-list">' + gen.map(tplItem).join('') + '</div>';
+  var shown = 0;
+  ['top', 'middle', 'low', 'skip'].forEach(function (p) {
+    var rows = TPL.data.categories.filter(function (t) { return (t.priority || 'middle') === p && hit(t); });
+    if (!rows.length) return;
+    shown += rows.length;
+    h += '<div class="tpl-h">By category · ' + SD_PRIO_WORD[p] + ' priority</div><div class="tpl-list">' + rows.map(tplItem).join('') + '</div>';
+  });
+  if (!gen.length && !shown) h += '<div class="panel" style="margin-top:14px"><div class="empty"><p>No category called “' + esc(TPL.q) + '”.</p></div></div>';
+  box.innerHTML = h;
+  var own = TPL.data.categories.filter(function (t) { return t.own; }).length;
+  document.getElementById('tpl-count').textContent = TPL.data.categories.length + ' categories · ' + (own ? own + ' with your own text' : 'all on the standard text');
+}
+// Typing: keep the text, refresh the preview, the tag and Save — no redraw.
+function tplOnInput(e) {
+  if (e.target.id === 'tpl-q') {
+    TPL.q = e.target.value;
+    var at = e.target.selectionStart;
+    tplRender();
+    var b = document.getElementById('tpl-q'); b.focus(); try { b.setSelectionRange(at, at); } catch (x) {}
+    return;
+  }
+  var f = e.target.getAttribute && e.target.getAttribute('data-tplin');
+  var t = f && tplFind(TPL.open);
+  if (!t) return;
+  var d = TPL.drafts[t.key] || { subject: t.subject, body: t.body };
+  d[f] = e.target.value;
+  TPL.drafts[t.key] = d;
+  if (!tplDirty(t)) delete TPL.drafts[t.key];
+  var item = e.target.closest('[data-tplitem]');
+  document.getElementById('tpl-pv').innerHTML = tplPreview(t);
+  item.querySelector('[data-tpltag]').innerHTML = tplTag(t);
+  item.querySelector('.tpl-subj').textContent = tplNow(t).subject;
+  var save = item.querySelector('[data-tpl="save"]');
+  save.disabled = !tplDirty(t);
+  var hasDiscard = !!item.querySelector('[data-tpl="discard"]');
+  if (hasDiscard !== tplDirty(t)) {
+    // The Discard button comes and goes: redraw this row, keep the cursor.
+    var id = e.target.id, pos = e.target.selectionStart, top = e.target.scrollTop;
+    tplRender();
+    var el = document.getElementById(id);
+    if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (x) {} el.scrollTop = top; }
+  }
+}
+function tplSave(t, reset) {
+  var n = tplNow(t);
+  TPL.busy = t.key; tplRender();
+  return api('saveEmailTemplate', reset ? { key: t.key, reset: true } : { key: t.key, subject: n.subject, body: n.body }).then(function (row) {
+    delete TPL.drafts[t.key];
+    ['subject', 'body', 'own', 'at', 'by'].forEach(function (k) { t[k] = row[k]; });
+    toast(reset ? tplName(t) + ' is back on the standard text' : row.own ? 'Saved — ' + tplName(t) : 'Saved — same as the standard text');
+  }).catch(function (e) { toast('Couldn’t save: ' + (e.message || e)); })
+    .then(function () { TPL.busy = null; tplRender(); });
+}
+function tplOnClick(e) {
+  var b = e.target.closest('[data-tpl]');
+  if (!b) return;
+  var act = b.getAttribute('data-tpl');
+  if (act === 'retry') return loadTemplates();
+  if (act === 'open') {
+    var key = b.getAttribute('data-key');
+    TPL.open = TPL.open === key ? null : key;
+    return tplRender();
+  }
+  var t = tplFind(TPL.open);
+  if (!t) return;
+  var n = tplNow(t);
+  if (act === 'save') return tplSave(t, false);
+  if (act === 'copy') return ztCopy(n.subject + '\n\n' + n.body, 'Copied — ' + tplName(t));
+  if (act === 'copyins') return ztCopy(tplInstantly(n.subject) + '\n\n' + tplInstantly(n.body), 'Copied with Instantly’s tags — paste it into the campaign');
+  if (act === 'discard') { delete TPL.drafts[t.key]; return tplRender(); }
+  if (act === 'reset') {
+    if (!confirm('Put “' + tplName(t) + '” back on the standard text?\n\nYour saved version goes:\n\n' + t.subject + '\n\n' + t.body.slice(0, 400) + (t.body.length > 400 ? '…' : ''))) return;
+    return tplSave(t, true);
+  }
+}
+(function () {
+  var v = document.getElementById('templates');
+  if (!v) return;
+  v.addEventListener('click', tplOnClick);
+  v.addEventListener('input', tplOnInput);
+})();
+
 // ── Cold email through Instantly ───────────────────────────────────────────
 // Leo, Nov 16 2026: "get the emails from Hunter, connect that to Instantly, and
 // run cold outreach through Instantly … build it connected", then "make this
-// its own tab and make it all cleaner": Outreach → Instantly (view
+// its own tab and make it all cleaner": Email → Instantly (view
 // `instantly`, INS / ins*, rules in src/lib/instantly.ts). The dashboard
 // sends nothing: Review & send lists everyone with an address who hasn't
 // been emailed (the Hunter card's "Already have an email"), ticked or not;
@@ -20950,7 +21150,7 @@ function insShell() {
   return box;
 }
 
-// Outreach → Instantly (its own tab — Leo, Nov 16 2026: "make this its own
+// Email → Instantly (its own tab — Leo, Nov 16 2026: "make this its own
 // tab and make it all cleaner").
 function loadInstantly() {
   showView('instantly');
@@ -27143,6 +27343,7 @@ function gotoViewNow(id) {
   if (id === 'outreach') loadOutreach();
   if (id === 'email-out') loadEmailOutreach();
   if (id === 'instantly') loadInstantly();
+  if (id === 'templates') loadTemplates();
   if (id === 'reached') loadReached();
   if (id === 'schedule') loadSchedule();
   if (id === 'weekplan') loadWeekPlan();

@@ -35,6 +35,10 @@ import {
   sendingPaused, setSendingPaused,
   emailDifferentContact, draftFinalNudge, draftReplyResponse, sendReplyEmail, sendPlainEmail,
 } from '@/lib/email'
+import { CATEGORY_ANGLES, DEFAULT_ANGLE } from '@/lib/email'
+import {
+  EMAIL_TEMPLATES_KEY, GENERAL_KEYS, GENERAL_LABELS, catKey, isTemplateKey, parseOwn, templateRow, ownFromSave,
+} from '@/lib/email-templates'
 import { syncNotionDeals } from '@/lib/notion'
 import { googleStatus, googleDisconnect, driveStatus, driveDisconnect, driveCreateActivationDocs, opsStatus, opsDisconnect, opsSend } from '@/lib/google'
 import { scanOps, listOps, getOps, updateOps, deleteOps, replyOps, forwardOps } from '@/lib/ops'
@@ -2750,6 +2754,8 @@ let acceptRateMemo: { at: number; rates: AcceptRates } | null = null
 // brand-fit.ts). brandFit reads it from here synchronously; every fit
 // computation loads accept rates first, which refreshes this at most once a
 // minute, and setCategoryPriority updates it at once.
+// Email → Templates: each category's angle line ('' = no angle of its own).
+const TEMPLATE_ANGLES: Record<string, { insert: string }> = { ...CATEGORY_ANGLES, '': DEFAULT_ANGLE }
 const CATEGORY_PRIORITY_KEY = 'categoryPriority'
 let categoryPriorityMemo: { at: number; map: Record<string, string> } = { at: 0, map: {} }
 async function loadCategoryPriority(force = false): Promise<Record<string, string>> {
@@ -5844,6 +5850,38 @@ const handlers: Record<string, Handler> = {
     await writeJsonSetting(prisma, CATEGORY_PRIORITY_KEY, custom)
     categoryPriorityMemo = { at: Date.now(), map: custom }
     return { category: key, priority: priorityOf(key, custom) }
+  },
+
+  // ---- Email → Templates (Leo, Nov 16 2026; src/lib/email-templates.ts) ----
+  // The templates every category shares, then one first email per category
+  // (Top → Skip, the Schedule's order). Leo's own versions live in Setting
+  // `emailTemplates`; one without an entry follows its default. Read-only.
+  async listEmailTemplates() {
+    const [stored, custom] = await Promise.all([
+      readJsonSetting<Record<string, any>>(prisma, EMAIL_TEMPLATES_KEY, {}),
+      loadCategoryPriority(true),
+    ])
+    const own = parseOwn(stored)
+    return {
+      general: GENERAL_KEYS.map(k => ({ ...templateRow(k, own, TEMPLATE_ANGLES), label: GENERAL_LABELS[k] })),
+      categories: CATEGORY_KEYS.map(c => ({ ...templateRow(catKey(c), own, TEMPLATE_ANGLES), category: c, priority: priorityOf(c, custom) })),
+    }
+  },
+  // Save one template, or (reset) hand it back to its default. Text equal
+  // to the default is a reset too. One writer at a time.
+  async saveEmailTemplate({ key, subject, body, reset, __user }: any) {
+    const k = String(key ?? '')
+    if (!isTemplateKey(k)) throw new Error('Unknown template')
+    const next = reset ? null : ownFromSave(k, subject, body, TEMPLATE_ANGLES)
+    const own = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${EMAIL_TEMPLATES_KEY}))::text`
+      const cur = parseOwn(await readJsonSetting<Record<string, any>>(tx, EMAIL_TEMPLATES_KEY, {}))
+      if (next) cur[k] = { ...next, at: new Date().toISOString(), by: __user ?? null }
+      else delete cur[k]
+      await writeJsonSetting(tx, EMAIL_TEMPLATES_KEY, cur)
+      return cur
+    })
+    return templateRow(k, own, TEMPLATE_ANGLES)
   },
 
   // ---- Leo's picked ideas (Oct 6 2026) — src/lib/build-ideas.ts ----
