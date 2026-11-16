@@ -1082,6 +1082,39 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   picks its intros from people with an email whose invite is still out, so saved addresses start showing up as **drafts**
   on this tab (one per brand, inside the cap; nothing sends while `EMAIL_SENDING_OFF`). Hunter's own pages couldn't be
   read from the cloud session (host not allowed), so its result file's headings are unverified until Leo's first file.
+  **Every brand we're not talking to** (Leo, later Nov 16 2026: "there are about 900 brands on the Command Center … I want
+  to get all those brands into our cold email outreach … a download … that has a list of all the brands and then probably
+  the people from those brands too"; the card is now titled "Find emails with Hunter — every brand we're not talking to").
+  A third group / chip, **Not reached out to yet** (`group: 'fresh'`, `freshList` in find-emails.ts, `findEmailPeople` in
+  route.ts — one read shared by `noAnswerList` and a file brought back without `SB id`): brands never invited or emailed,
+  not on the tracker (so not in talks), with no deal / show / activation / Show Board request, and nothing the queue's own
+  picks set aside or hold back (`supplyStateOf`: archived, do-not-email, stopped, not US, closed → out; a held giant, a
+  Skip category, too small → counted "the queue holds back", the same switches as What the queue has to work with). Best
+  Brand Fit first; at each, its **best N people** (`perBrand`, the card's menu: 3 by default — `FRESH_PER_BRAND` — 5, 10,
+  everyone = 0): unflagged titles first (`personProblem` + the abroad test; a flagged person only when the brand has
+  nobody else), partnerships > events > marketing = founder (`buyerRank`), a marked decision maker, a LinkedIn link;
+  never someone who said stop. Of those N, the ones with an email are `ready`, the ones without go on the same file for
+  Hunter's Email Finder (our id comes back, `saveFoundEmails` unchanged). `domains` = brands not reached yet with nobody
+  to email or look up → **Download their websites** = a second file, one company a line (its domain, else its name — a
+  parent's for a label; `domainLines` / `feDomainLines`, each once), for Hunter's **Bulks → Domain Search**. Bringing
+  that result back (it makes new people) is **not built** — wait for Leo's first Domain Search file to read its headings.
+  Hunter's bulk Domain Search takes domains or company names one a line and has no department filter we could confirm
+  (the filter is on the one-company search); help.hunter.io / hunter.io still can't be read from the cloud session.
+  **Every brand accounted for, and by category** (Leo, the same day, on his first file — 559 people at 210 brands: "Only
+  210 brands, not ~900" · "i want you to separate by category too"). `noAnswerList.tally` = every brand (a Show Board
+  person aside) in exactly one place per category (`BrandSpot` / `tallySpots` in find-emails.ts; `needEmailList.spots` for
+  reached brands, `findEmailPeople` for the rest; the e2e checks they add up to the brand count): `list` someone to look
+  up · `ready` an email on file, nobody to look up · `nobody` nothing to look up (the websites file) · `tooNew` every
+  invite younger than the wait · `emailed` · `waiting` on Zach's list · `talking` replied / in talks / said no / asked us
+  to stop · `held` by the queue's rules · `known` a deal, show or board request · `off` archived or set aside. The card's
+  line `#fe-tally` ("All 912 brands: 210 have someone to look up · …"; `FE_SPOTS`, `feTally`) says it, with **Include
+  them** on the too-new ones (= the wait to any time). **Category**: a menu on the card (`#fe-cat`, `FE.cat`, '' = all,
+  '~' = none; each with its brands to look up) narrows the tiles, the chips' counts, the every-brand line, the list and
+  all three files; the files are sorted by category in the site's order (`feByCat`, `CAT_KEYS`), carry its name (`SB
+  category` on the Hunter file — `HUNTER_HEAD`; Category on the have-emails file) and take it in their name
+  (`sb-need-emails-energy-<day>.csv`). "People left out" (names cut short, already emailed, past the brand's number) is
+  the roster's, shown only without a category. Leo's first file also showed **146 of its 210 brands have no website on
+  file** (Hunter goes by company name there) — not fixed; filling websites is the next lever for Hunter's hit rate.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Outreach → Email: Send them through Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect
@@ -1092,12 +1125,17 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   the database side in `src/lib/instantly-db.ts` (shared by /api/data, the webhook route and the cron). **The dashboard is
   in the middle** — it's the one place that knows who said stop — and it never sends: Instantly does, from a campaign Leo
   writes there. **Who can go** = the Hunter card's "Already have an email" (`noAnswerList.ready`: an address on file, never
-  emailed, at a brand nobody answered from) less anyone already handed over (`counts.handed`) or stopped. **Review &
-  send…** = `sendToInstantly({})` (a preview, rule 6: every person, where the address came from — `emailSource` reads the
-  line Hunter's file left in their notes — ticked unless Hunter couldn't verify it or it's a shared inbox like info@) →
+  emailed, at a brand nobody answered from or one not reached out to yet) less anyone already handed over
+  (`counts.handed`) or stopped. **Review & send…** = `sendToInstantly({ perBrand })` (a preview, rule 6: every person,
+  where the address came from — `emailSource` reads the line Hunter's file left in their notes — ticked unless Hunter
+  couldn't verify it, it's a shared inbox like info@, **or the brand isn't reached on LinkedIn yet** (group `fresh`: an
+  email makes the brand "reached", and the LinkedIn queue only picks brands nobody has reached — so those are Leo's to
+  tick, one by one or by the group's chip; the list says so). Lines are keyed by the person (`contactId`); someone with
+  no outreach row gets one at send (`Target` queued, next in line — `shelvedHow: 'cap'` — so a brand's number in the
+  LinkedIn queue doesn't move). 150 rows then Show all; a chip per group ticks or unticks it) →
   **Send N people to Instantly** asks once more (the question says whether the campaign is running: Active = Instantly
   emails them on its next slot; Draft / Paused = nothing until he starts it there) → `sendToInstantly({ ids, confirm,
-  expect })`: **a signed-in person only** (refused for Claude's token and for keys — `keyBlocked` closes every Instantly
+  expect, perBrand })` (ids = contact ids): **a signed-in person only** (refused for Claude's token and for keys — `keyBlocked` closes every Instantly
   write, by name and by shape; `instantlyStatus` stays open), stale-checked, ≤ 1,000 a time, `POST /api/v2/leads/add` in
   chunks of 200 with `skip_if_in_campaign` and an idempotency key. Instantly gets only `leadFor`'s fields (email, first /
   last name, company, title, website, `custom_variables.sb_id` = our contact id). A row in table **`InstantlyLead`** (one

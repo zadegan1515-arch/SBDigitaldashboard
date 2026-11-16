@@ -197,8 +197,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await brand('b_acc', 'Accepted Co');
     const acc = await mk('c_acc', 'b_acc', 'Al Accepted', 'al@accepted.com', VER, { status: 'accepted' });
     await prisma.targetEvent.create({ data: { targetId: acc.row.id, kind: 'status', fromStatus: 'sent', toStatus: 'accepted', createdAt: D(1) } });
-    // Dee's other copy at another brand (the same address): a stop marks it too.
-    await brand('b_twin', 'Twin Co');
+    // A brand nobody has reached out to: its person has an address and no outreach row at all.
+    await brand('b_nova', 'Nova Pouch', { category: 'nicotine' });
+    await prisma.contact.create({ data: { id: 'c_nia', brandId: 'b_nova', name: 'Nia New', title: 'Head of Partnerships', linkedinUrl: 'https://www.linkedin.com/in/c_nia', email: 'nia@nova.com', notes: VER } });
+    // Dee's other copy at another brand (the same address): a stop marks it too. (Archived, so it isn't a brand to email.)
+    await brand('b_twin', 'Twin Co', { passedAt: D(2) });
     await mk('c_dee2', 'b_twin', 'Dee Two', 'dee@two.com', null, { status: 'queued', sentAt: null });
 
     // 1. The card before anything: connected, campaigns listed, nothing handed.
@@ -219,7 +222,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(pv.preview, true);
     const line = (name) => pv.lines.find(l => l.name === name);
     assert.deepEqual(pv.lines.map(l => l.name).sort(),
-      ['Bo Chen', 'Cy Day', 'Dee Two', 'Del Gone', 'Dr. Ann Lee, MBA', 'Fay Stop', 'Gus Sent', 'Hal Wait', 'Ivy Hand', 'Ivy Inbox', 'Jo Deleted', 'Kit Fine', 'Kat Blocked', 'Kim Already'].sort());
+      ['Bo Chen', 'Cy Day', 'Dee Two', 'Del Gone', 'Dr. Ann Lee, MBA', 'Fay Stop', 'Gus Sent', 'Hal Wait', 'Ivy Hand', 'Ivy Inbox', 'Jo Deleted', 'Kit Fine', 'Kat Blocked', 'Kim Already', 'Nia New'].sort());
+    // Not reached on LinkedIn yet: she can go, but starts unticked — an email makes her brand "reached".
+    assert.deepEqual([line('Nia New').action, line('Nia New').tick, line('Nia New').group, line('Nia New').targetId], ['send', false, 'fresh', null]);
+    assert.match(line('Nia New').why, /brand not reached on LinkedIn yet/);
+    assert.equal(pv.counts.fresh, 1);
     assert.ok(!line('Nora None') && !line('Al Accepted'), 'nobody without an address, nobody at a brand being worked on LinkedIn');
     assert.equal(line('Dr. Ann Lee, MBA').tick, true);
     assert.equal(line('Dr. Ann Lee, MBA').email, 'ann@cold.com');
@@ -232,7 +239,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('the preview names everyone with an address who was never emailed — unverified and shared inboxes unticked — and sends nothing');
 
     // 3. No campaign, no send; Claude's token can pick the campaign but never send.
-    const T = (name) => line(name).targetId;
+    const T = (name) => line(name).contactId;
     let r = await call(leo, 'sendToInstantly', { ids: [T('Dr. Ann Lee, MBA')], confirm: true, expect: pv.expect });
     assert.equal(r.ok, false); assert.match(r.error, /Pick the Instantly campaign/);
     r = await call(leo, 'setInstantlyCampaign', { campaignId: 'nope' });
@@ -409,7 +416,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 12. A stop made on the dashboard reaches Instantly right away: deleted there, and on its block list.
     pv = await data(leo, 'sendToInstantly', {});
-    const pick = (names) => names.map(x => pv.lines.find(l => l.name === x).targetId);
+    const pick = (names) => names.map(x => pv.lines.find(l => l.name === x).contactId);
     await data(leo, 'sendToInstantly', { ids: pick(['Fay Stop']), confirm: true, expect: pv.expect });
     assert.ok(fakeLead('fay@fayco.com'));
     const stopped = await data(leo, 'handStep', { targetId: 't_fay', step: 'declined', on: true, scope: 'person' });
@@ -527,6 +534,22 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(es.totalSent, 0);
     ok('the dashboard never drafts a follow-up on top of Instantly’s sequence, and its cap and stats don’t count Instantly’s emails');
 
+    // 18c. Someone at a brand not reached yet, with no outreach row: ticked by hand, she gets a row (next in line —
+    //      the LinkedIn queue's numbers don't move) and goes; Instantly's email makes the brand reached.
+    assert.equal(await prisma.target.count({ where: { contactId: 'c_nia' } }), 0);
+    pv = await data(leo, 'sendToInstantly', {});
+    const nia = await data(leo, 'sendToInstantly', { ids: pick(['Nia New']), confirm: true, expect: pv.expect });
+    assert.equal(nia.sent, 1);
+    const niaT = await prisma.target.findFirst({ where: { contactId: 'c_nia' }, include: { instantly: true } });
+    assert.deepEqual([niaT.status, niaT.shelved, niaT.shelvedHow, niaT.brandId, niaT.instantly.state], ['queued', true, 'cap', 'b_nova', 'waiting']);
+    assert.ok(fakeLead('nia@nova.com'));
+    assert.equal((await data(leo, 'reachedBrands', {})).brands['b_nova'], undefined, 'handed over is not reached yet');
+    await hook({ timestamp: new Date().toISOString(), event_type: 'email_sent', campaign_id: 'camp-cold', lead_email: 'nia@nova.com', step: 1, email_id: 'em-n1', email_subject: 'Nova Pouch x SB' }, HOOK2);
+    assert.ok((await data(leo, 'reachedBrands', {})).brands['b_nova'], 'once Instantly emails her, the brand carries the Reached tag');
+    const nova = (await data(leo, 'outreachTracker', {})).brands.find(b => b.id === 'b_nova');
+    assert.equal(nova.stage, 'reached');
+    ok('someone at a brand not reached yet goes when ticked by hand: she gets an outreach row (next in line), and the email makes the brand reached');
+
     // 19. A bad key, a lapsed plan: said in words, nothing breaks.
     F.fail = 401;
     st = await data(leo, 'instantlyStatus', { live: true });
@@ -538,7 +561,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     sync = await data(leo, 'instantlySync', {});
     assert.equal(sync.ok, false); assert.match(sync.error, /no active paid plan/);
     pv = await data(leo, 'sendToInstantly', {});
-    r = await call(leo, 'sendToInstantly', { ids: pv.lines.filter(l => l.action === 'send').map(l => l.targetId), confirm: true, expect: pv.expect });
+    r = await call(leo, 'sendToInstantly', { ids: pv.lines.filter(l => l.action === 'send').map(l => l.contactId), confirm: true, expect: pv.expect });
     assert.equal(r.ok, false);
     F.fail = 0;
     sync = await data(leo, 'instantlySync', {});

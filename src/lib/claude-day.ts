@@ -83,7 +83,7 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'importContacts': return `Added ${plural(Number(r.added ?? r.created ?? count(a.rows)) || 0, 'person', 'people')}${a.source ? ' (' + s(a.source, 20) + ')' : ''}`
     case 'reviewNewBrands': return `${a.action === 'archive' ? 'Archived' : 'Kept'} ${plural(count(a.ids), 'brand')} from New from LinkedIn`
     case 'saveHandTemplate': return `Saved the ${s(a.kind || 'email')} message template on Zach's list`
-    case 'saveFoundEmails': return `Saved ${plural(Number(r.saved) || 0, 'email')} from Hunter's file (people who didn't answer on LinkedIn)`
+    case 'saveFoundEmails': return `Saved ${plural(Number(r.saved) || 0, 'email')} from Hunter's file`
     case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
     // Instantly (a Claude session can pick the campaign, turn live updates on
     // and sync; handing people over is a signed-in person's click only).

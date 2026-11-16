@@ -96,16 +96,23 @@ export type PushPerson = {
   handed?: boolean          // already has an InstantlyLead
   stopped?: string | null   // why they're never contacted, in words
 }
-export type PushAction = 'send' | 'handed' | 'bad' | 'stopped' | 'norow'
+export type PushAction = 'send' | 'handed' | 'bad' | 'stopped'
 export type PushLine = {
   targetId: string | null; contactId: string; name: string; title: string | null; brandId: string; brandName: string; email: string
   source: EmailSource; action: PushAction; why: string; tick: boolean; group: string | null
 }
-export type PushPlan = { lines: PushLine[]; counts: Record<PushAction, number> & { ticked: number; brands: number }; sig: string }
+export type PushPlan = { lines: PushLine[]; counts: Record<PushAction, number> & { ticked: number; brands: number; fresh: number }; sig: string }
+// The group of someone at a brand nobody has reached out to yet (find-emails.ts).
+export const FRESH_GROUP = 'fresh'
 
 // Everyone with an address who hasn't been emailed: who can go, and who is
-// ticked to begin with (not an address Hunter couldn't verify, not a shared
-// inbox like info@ — those bounce or land on nobody's desk).
+// ticked to begin with. Unticked: an address Hunter couldn't verify and a
+// shared inbox like info@ (those bounce or land on nobody's desk) — and
+// anyone at a brand not reached on LinkedIn yet: an email makes the brand
+// "reached", and the LinkedIn queue only picks brands nobody has reached, so
+// that's Leo's call, brand by brand or the whole group. Lines are keyed by
+// the person (contactId): someone with no outreach row yet gets one when
+// they're sent (targetId null until then).
 export function planPush(people: PushPerson[]): PushPlan {
   const lines: PushLine[] = []
   const used = new Set<string>()
@@ -117,22 +124,28 @@ export function planPush(people: PushPerson[]): PushPlan {
     if (p.handed) { put('handed', 'Already in Instantly'); continue }
     if (!looksLikeEmail(email)) { put('bad', 'Not an email address'); continue }
     if (p.stopped) { put('stopped', p.stopped); continue }
-    if (!p.targetId) { put('norow', 'No outreach on file for them'); continue }
     if (used.has(email)) { put('bad', 'Someone else on the list has this address'); continue }
     used.add(email)
     const role = isRoleInbox(email)
     const free = !mailDomain(email)
-    const why = role ? 'A shared inbox (' + email.split('@')[0] + '@) — not a person'
+    const fresh = p.group === FRESH_GROUP
+    const why = (role ? 'A shared inbox (' + email.split('@')[0] + '@) — not a person'
       : source === 'unverified' ? SOURCE_WORDS.unverified
       : free ? SOURCE_WORDS[source] + ' · a personal address'
-      : SOURCE_WORDS[source]
-    put('send', why, !role && source !== 'unverified')
+      : SOURCE_WORDS[source]) + (fresh ? ' · brand not reached on LinkedIn yet' : '')
+    put('send', why, !role && source !== 'unverified' && !fresh)
   }
-  const counts = { send: 0, handed: 0, bad: 0, stopped: 0, norow: 0, ticked: 0, brands: 0 } as PushPlan['counts']
+  const counts = { send: 0, handed: 0, bad: 0, stopped: 0, ticked: 0, brands: 0, fresh: 0 } as PushPlan['counts']
   const brands = new Set<string>()
-  for (const l of lines) { counts[l.action] += 1; if (l.action === 'send') { brands.add(l.brandId); if (l.tick) counts.ticked += 1 } }
+  for (const l of lines) {
+    counts[l.action] += 1
+    if (l.action !== 'send') continue
+    brands.add(l.brandId)
+    if (l.tick) counts.ticked += 1
+    if (l.group === FRESH_GROUP) counts.fresh += 1
+  }
   counts.brands = brands.size
-  return { lines, counts, sig: sigOf(lines.filter(l => l.action === 'send').map(l => l.targetId + ':' + l.email)) }
+  return { lines, counts, sig: sigOf(lines.filter(l => l.action === 'send').map(l => l.contactId + ':' + l.email)) }
 }
 
 // The lead Instantly gets. Only what a cold email needs: the address, the

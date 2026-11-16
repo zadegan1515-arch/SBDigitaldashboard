@@ -53,8 +53,8 @@ import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib
 import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, LI_PARENT_PAGES_KEY, type Parent } from '@/lib/parents'
 import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, linkedinSlug, type PersonRow, type MergeFields } from '@/lib/same-person'
 import {
-  needEmailList, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
-  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FOUND_LAST_KEY, type FoundContact, type HunterRow,
+  needEmailList, freshList, tallySpots, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
+  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import {
   planPush, leadFor, campaignView, batchId, isActive as instantlyActive, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
@@ -97,7 +97,7 @@ import {
   keepEarlier, CHAT_REPLY_MAX, type ChatAsk,
 } from '@/lib/chat-log'
 import { BUILD_IDEAS } from '@/lib/build-ideas'
-import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem } from '@/lib/queue-check'
+import { checkBrandQueue, sortPicks, leaveOutFlagged, personProblem, buyerRank } from '@/lib/queue-check'
 import { isBigBrand, workCount, keepInPlay, brandNames, type BigBrandFacts } from '@/lib/brand-work'
 import { queueGate, giantOf, sittingOf, secondTryOf, nyDayKey, STALE_INVITE_DAYS, REST_DAYS, GIANTS_KEY, parseGiants, SMALL_KEY, parseSmall, type Gate, type OutreachRow } from '@/lib/queue-rules'
 import { sortToday, compareTodayBrands } from '@/lib/today-order'
@@ -3038,6 +3038,83 @@ function supplyStateOf(b: PlanBrand, f: FitResult, q: QueueCtx): { state: Supply
   )
   const ready = contactLabel(b, b.contacts).kind === 'ready'
   return { state: supplyOf({ off, reached, pass: passedNow(b), holds, ready }), holds }
+}
+
+// Who Outreach → Email's Hunter card lists (find-emails.ts), read once for the
+// card and for a file brought back without our id column:
+//   list  = the people who didn't answer on LinkedIn — Deals → Overview's own
+//           read (outreachTracker), so the two never disagree;
+//   fresh = brands not reached out to yet: never invited or emailed, not on
+//           the tracker (so not in talks), no deal / show / activation / Show
+//           Board request, and nothing the queue's own picks set aside or hold
+//           back (supplyStateOf — archived, do-not-email, stopped, not US,
+//           closed; a held giant, a Skip category, too small). Best Brand Fit
+//           first; at each, its best `perBrand` people (0 = everyone).
+// coOf = what Hunter looks a brand's people up under: the domain its people
+// already mail from, else its website; a label under a parent company with
+// neither goes by the parent's name (its people mail from there).
+async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: Date }) {
+  const now = opts.now ?? new Date()
+  const [tr, ctx, people, deals, acts, sponsors, asked] = await Promise.all([
+    (handlers.outreachTracker as Handler)({}) as Promise<any>,
+    loadBankCtx(),
+    prisma.brand.findMany({ where: { kind: 'person' }, select: { id: true } }),
+    prisma.deal.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.activation.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.showSponsor.findMany({ select: { brandId: true }, distinct: ['brandId'] }),
+    prisma.boardAccessRequest.findMany({ where: { brandId: { not: null } }, select: { brandId: true }, distinct: ['brandId'] }),
+  ])
+  const list = needEmailList(tr.brands, { minDays: opts.minDays, now })
+  const tracked = new Set<string>((tr.brands as any[]).map(b => b.id))
+  const known = new Set<string>([...deals, ...acts, ...sponsors, ...asked].map(x => x.brandId as string))
+  const held: Record<Hold, number> = { giant: 0, skip: 0, small: 0 }
+  let heldBrands = 0, dealBrands = 0
+  const freshBrands: Array<FreshBrand & { fit: number }> = []
+  // Where every brand stands (BrandSpot): the reached ones as the list says,
+  // the rest here. A person on the Show Board is not a brand.
+  const notBrand = new Set(people.map(b => b.id))
+  const spotOf = new Map<string, BrandSpot>(Object.entries(list.spots) as Array<[string, BrandSpot]>)
+  for (const b of ctx.brands) {
+    if (tracked.has(b.id) || notBrand.has(b.id)) continue
+    const fit = planBrandFit(b, ctx.rates)
+    const { state, holds } = supplyStateOf(b, fit, ctx.q)
+    if (state === 'off' || state === 'reached') { spotOf.set(b.id, state === 'off' ? 'off' : 'other'); continue }
+    if (known.has(b.id)) { dealBrands += 1; spotOf.set(b.id, 'known'); continue }
+    if (state === 'held') { heldBrands += 1; for (const h of holds) held[h] += 1; spotOf.set(b.id, 'held'); continue }
+    const names = brandNames(b)
+    const isAbroad = abroadTest(b, names)
+    freshBrands.push({
+      id: b.id, name: b.name, category: b.category, fit: fit.score,
+      people: b.contacts.map(c => ({
+        contactId: c.id, name: c.name, title: c.title, linkedinUrl: c.linkedinUrl, email: c.email,
+        stopped: !!c.doNotContactAt, decisionMaker: !!c.isDecisionMaker, rank: buyerRank(c.title),
+        flagged: !!personProblem(c.title, names) || isAbroad({ title: c.title, location: c.location }),
+      })),
+    })
+  }
+  freshBrands.sort((x, y) => y.fit - x.fit || x.name.localeCompare(y.name))
+  const fresh = freshList(freshBrands, { perBrand: opts.perBrand, skip: new Set([...list.need, ...list.have].map(r => r.contactId)) })
+  const byId = new Map(ctx.brands.map(b => [b.id, b]))
+  const lookUp = new Set(fresh.need.map(r => r.brandId)), mail = new Set(fresh.have.map(r => r.brandId))
+  for (const b of freshBrands) spotOf.set(b.id, lookUp.has(b.id) ? 'list' : mail.has(b.id) ? 'ready' : 'nobody')
+  const tally = tallySpots([...spotOf].map(([id, spot]) => ({ category: byId.get(id)?.category ?? null, spot })))
+  const memo = new Map<string, { company: string; domain: string | null; domainFrom: string | null; parent: string | null }>()
+  const coOf = (brandId: string, name: string) => {
+    const hit = memo.get(brandId)
+    if (hit) return hit
+    const b = byId.get(brandId)
+    let co = { company: name, domain: null as string | null, domainFrom: null as string | null, parent: null as string | null }
+    if (b) {
+      const parent = parentOf(b.name, b.aka)
+      const d = companyDomain({ website: b.website, emails: b.contacts.map(c => c.email) })
+      const viaParent = !!parent && d.from !== 'emails'
+      co = { company: viaParent ? parent!.name : b.name, domain: viaParent ? null : d.domain, domainFrom: viaParent ? null : d.from, parent: parent?.name ?? null }
+    }
+    memo.set(brandId, co)
+    return co
+  }
+  const withCo = (r: FindRow): HunterRow & { domainFrom: string | null; parent: string | null } => ({ ...r, ...coOf(r.brandId, r.brandName) })
+  return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size }
 }
 
 const DEAD_WEIGHT_KEY = 'deadWeightLast'
@@ -15662,46 +15739,42 @@ const handlers: Record<string, Handler> = {
   // own read (outreachTracker), so the two never disagree. Read-only.
   //   people = no email on file → the file for Hunter's bulk Email Finder
   //   ready  = an email is on file and nobody has emailed them yet
-  async noAnswerList({ minDays }: any = {}) {
+  // Later that day ("about 900 brands … get all those brands into our cold
+  // email outreach"): both lists also take the brands not reached out to yet
+  // (group 'fresh', findEmailPeople above), their best `perBrand` people each,
+  // and `domains` = those with nobody to look up, for Hunter's Domain Search.
+  async noAnswerList({ minDays, perBrand }: any = {}) {
     const days = Math.min(365, Math.max(0, Math.round(Number(minDays ?? FIND_MIN_DAYS)) || 0))
+    const per = perBrand === undefined || perBrand === null || perBrand === ''
+      ? FRESH_PER_BRAND : Math.min(CONTACT_CAP_PER_BRAND, Math.max(0, Math.round(Number(perBrand)) || 0))
     const now = new Date()
-    const tr: any = await handlers.outreachTracker({})
-    const list = needEmailList(tr.brands, { minDays: days, now })
-    const brandIds = [...new Set([...list.need, ...list.have].map(r => r.brandId))]
-    const [brands, mails, lastRow] = await Promise.all([
-      prisma.brand.findMany({ where: { id: { in: brandIds } }, select: { id: true, name: true, aka: true, website: true } }),
-      prisma.contact.findMany({ where: { brandId: { in: brandIds }, email: { not: null } }, select: { brandId: true, email: true } }),
+    const [f, lastRow] = await Promise.all([
+      findEmailPeople({ minDays: days, perBrand: per, now }),
       prisma.setting.findUnique({ where: { key: FOUND_LAST_KEY } }),
     ])
-    const mailsBy = new Map<string, string[]>()
-    for (const m of mails) if (m.email) mailsBy.set(m.brandId, [...(mailsBy.get(m.brandId) ?? []), m.email])
-    // What Hunter looks the person up under: the domain the brand's people
-    // already mail from, else its website; a label under a parent company
-    // with neither goes by the parent's name (its people mail from there).
-    const co = new Map<string, { company: string; domain: string | null; domainFrom: string | null; parent: string | null }>()
-    for (const b of brands) {
-      const parent = parentOf(b.name, b.aka)
-      const d = companyDomain({ website: b.website, emails: mailsBy.get(b.id) ?? [] })
-      const viaParent = !!parent && d.from !== 'emails'
-      co.set(b.id, { company: viaParent ? parent!.name : b.name, domain: viaParent ? null : d.domain, domainFrom: viaParent ? null : d.from, parent: parent?.name ?? null })
-    }
-    const withCo = (r: (typeof list.need)[number]): HunterRow & { domainFrom: string | null; parent: string | null } => {
-      const c = co.get(r.brandId)
-      return { ...r, company: c?.company ?? r.brandName, domain: c?.domain ?? null, domainFrom: c?.domainFrom ?? null, parent: c?.parent ?? null }
-    }
-    const people = list.need.map(withCo)
+    const people = [...f.list.need, ...f.fresh.need].map(f.withCo)
+    const have = [...f.list.have, ...f.fresh.have].map(f.withCo)
     let last: any = null
     try { last = lastRow ? JSON.parse(lastRow.value) : null } catch { last = null }
     // Handed to Instantly and not emailed yet: no longer "ready" — they're on
     // its card (once it emails them they count as emailed, like anyone).
-    const handed = new Set((list.have.length ? await prisma.instantlyLead.findMany({
-      where: { target: { contactId: { in: list.have.map(r => r.contactId) } } }, select: { target: { select: { contactId: true } } },
+    const handedIds = new Set((have.length ? await prisma.instantlyLead.findMany({
+      where: { target: { contactId: { in: have.map(r => r.contactId) } } }, select: { target: { select: { contactId: true } } },
     }) : []).map(r => r.target.contactId))
-    const ready = list.have.filter(r => !handed.has(r.contactId))
+    const ready = have.filter(r => !handedIds.has(r.contactId))
     return {
-      minDays: days, today: localDayKey(now),
-      counts: { ...list.counts, have: ready.length, handed: list.have.length - ready.length, noDomain: people.filter(p => !p.domain).length },
-      people, ready: ready.map(withCo),
+      minDays: days, perBrand: per, today: localDayKey(now),
+      counts: {
+        ...f.list.counts, ...f.fresh.counts,
+        need: people.length, needBrands: new Set(people.map(p => p.brandId)).size, have: ready.length, handed: have.length - ready.length,
+        noDomain: people.filter(p => !p.domain).length,
+        heldBrands: f.heldBrands, held: f.held, dealBrands: f.dealBrands,
+      },
+      people, ready,
+      // Every brand in one place, per category (find-emails.ts BrandSpot): the card's "where every brand stands".
+      tally: f.tally, brandTotal: f.brandTotal,
+      // Brands not reached yet with nobody to look up: their websites, for Hunter's Domain Search.
+      domains: f.fresh.nobody.map(n => { const c = f.coOf(n.id, n.name); return { brandId: n.id, brandName: n.name, category: n.category, company: c.company, domain: c.domain, parent: c.parent } }),
       last: last && Array.isArray(last.rows) && last.rows.length ? { at: last.at, by: last.by ?? null, count: last.rows.length } : null,
     }
   },
@@ -15718,9 +15791,8 @@ const handlers: Record<string, Handler> = {
     // A row without our "SB id" column: matched to the list by profile link, else name + brand.
     const bySlug = new Map<string, string>(), byKey = new Map<string, string>()
     if (file.rows.some(r => !r.id)) {
-      const tr: any = await handlers.outreachTracker({})
-      const l = needEmailList(tr.brands, { minDays: 0 })
-      for (const r of [...l.need, ...l.have]) {
+      const f = await findEmailPeople({ minDays: 0, perBrand: 0 })
+      for (const r of [...f.list.need, ...f.list.have, ...f.fresh.need, ...f.fresh.have]) {
         const slug = linkedinSlug(r.linkedinUrl)
         if (slug && !bySlug.has(slug)) bySlug.set(slug, r.contactId)
         const k = findPersonKey(r.name, r.brandName)
@@ -15904,13 +15976,17 @@ const handlers: Record<string, Handler> = {
   // Hand people to the chosen campaign. Without confirm: everyone who could
   // go, each with where their address came from, ticked or not (rule 6) —
   // the ready list of the card above (an email on file, never emailed, at a
-  // brand nobody answered from), less anyone stopped. confirm + the ticked
-  // row ids + the preview's `expect` (changed since → stale) sends them. Only
+  // brand nobody answered from or one not reached yet — those start
+  // unticked), less anyone stopped. confirm + the ticked people (contact
+  // ids) + the preview's `expect` (changed since → stale) sends them; someone
+  // with no outreach row yet gets one first, next in line, so the LinkedIn
+  // queue's numbers don't move. Only
   // a signed-in person can: never a key, never Claude's token, never a cron.
   // Instantly emails them from there — if the campaign is running, from its
   // next sending slot; the answer says which.
-  async sendToInstantly({ ids, confirm = false, expect, __user, __key }: any = {}) {
-    const list: any = await handlers.noAnswerList({ minDays: 0 })
+  async sendToInstantly({ ids, confirm = false, expect, perBrand, __user, __key }: any = {}) {
+    // The same list the card above shows (`perBrand` = its "people a brand" for brands not reached yet).
+    const list: any = await handlers.noAnswerList({ minDays: 0, perBrand })
     const ready: Array<HunterRow & { contactId: string }> = list.ready
     const cids = ready.map(r => r.contactId)
     const [contacts, stops, chosen] = await Promise.all([
@@ -15926,7 +16002,7 @@ const handlers: Record<string, Handler> = {
     ])
     const byId = new Map(contacts.map(c => [c.id, c]))
     const people: PushPerson[] = []
-    const leads = new Map<string, ReturnType<typeof leadFor>>()
+    const leads = new Map<string, ReturnType<typeof leadFor>>()          // by contact id
     for (const r of ready) {
       const c = byId.get(r.contactId)
       if (!c) continue
@@ -15940,7 +16016,7 @@ const handlers: Record<string, Handler> = {
         notes: c.notes, brandId: c.brandId, brandName: c.brand.name, website: c.brand.website, domain: r.domain, group: r.group,
         handed: !!t?.instantly, stopped,
       })
-      if (t && c.email) leads.set(t.id, leadFor({ name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, brandName: c.brand.name, website: c.brand.website, domain: r.domain, contactId: c.id }))
+      if (c.email) leads.set(c.id, leadFor({ name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, brandName: c.brand.name, website: c.brand.website, domain: r.domain, contactId: c.id }))
     }
     const plan = planPush(people)
     let campaign: ReturnType<typeof campaignView> | null = null
@@ -15956,20 +16032,34 @@ const handlers: Record<string, Handler> = {
     if (!campaign) throw new Error(error || 'That campaign isn’t in Instantly any more — pick another')
     if (String(expect || '') !== plan.sig) return { applied: false, stale: true, ...summary }
     const pick = new Set((Array.isArray(ids) ? ids : []).map(String))
-    const todo = plan.lines.filter(l => l.action === 'send' && l.targetId && pick.has(l.targetId))
+    const todo = plan.lines.filter(l => l.action === 'send' && pick.has(l.contactId) && leads.has(l.contactId))
     if (!todo.length) throw new Error('Nobody is ticked to send')
     if (todo.length > INSTANTLY_PUSH_MAX) throw new Error('That’s ' + todo.length + ' people — send at most ' + INSTANTLY_PUSH_MAX + ' at a time')
+    // Someone never queued (a brand not reached yet, a person added by
+    // import): an outreach row to hang the emails on — next in line, so the
+    // brand's number in the LinkedIn queue stays as it was.
+    const rowOf = new Map(todo.filter(l => l.targetId).map(l => [l.contactId, l.targetId as string]))
+    const bare = todo.filter(l => !l.targetId)
+    if (bare.length) {
+      await prisma.target.createMany({
+        data: bare.map(l => ({ brandId: l.brandId, contactId: l.contactId, status: 'queued' as const, shelved: true, shelvedHow: 'cap' })),
+        skipDuplicates: true,
+      })
+      for (const t of await prisma.target.findMany({ where: { contactId: { in: bare.map(l => l.contactId) } }, select: { id: true, contactId: true } })) rowOf.set(t.contactId, t.id)
+    }
     const now = new Date()
     const batch = batchId(now)
     const res = await pushLeads(prisma, {
       campaignId: chosen.id, by: talksBy(__user), batch,
-      people: todo.map(l => ({ targetId: l.targetId as string, contactId: l.contactId, name: l.name, brandName: l.brandName, email: l.email, lead: leads.get(l.targetId as string)! })),
+      people: todo.filter(l => rowOf.has(l.contactId)).map(l => ({
+        targetId: rowOf.get(l.contactId) as string, contactId: l.contactId, name: l.name, brandName: l.brandName, email: l.email, lead: leads.get(l.contactId)!,
+      })),
     })
     if (res.sent.length) {
       await writeInstantlyJson(prisma, INSTANTLY_PUSH_KEY, { batch, at: now.toISOString(), by: talksBy(__user), campaignId: chosen.id, campaignName: campaign.name, count: res.sent.length })
     }
     return {
-      applied: true, sent: res.sent.length, brands: new Set(todo.filter(l => res.sent.some(x => x.targetId === l.targetId)).map(l => l.brandId)).size,
+      applied: true, sent: res.sent.length, brands: new Set(todo.filter(l => res.sent.some(x => x.targetId === rowOf.get(l.contactId))).map(l => l.brandId)).size,
       already: res.already, refused: res.refused, remaining: res.remaining, campaignName: campaign.name, sends: campaign.sends, statusWord: campaign.statusWord,
     }
   },

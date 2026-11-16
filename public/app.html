@@ -1657,7 +1657,7 @@
   .su-show{background:none;border:1px solid var(--border);color:var(--accent-hi);font:inherit;font-size:12.5px;border-radius:99px;padding:2px 10px;cursor:pointer;white-space:nowrap}
   .su-show:hover{border-color:var(--accent)}
   .su-show.on{background:var(--accent-soft);border-color:var(--accent)}
-  /* Outreach → Email: emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; find-emails.ts) */
+  /* Outreach → Email: find emails with Hunter — who didn't answer on LinkedIn + brands not reached yet (Leo, Nov 16 2026; find-emails.ts) */
   .fe-card{margin-top:18px;padding:16px 18px}
   .fe-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
   .fe-h b{font-size:16px}
@@ -1687,6 +1687,11 @@
   .fe-ok{color:var(--good)} .fe-maybe{color:var(--warn)}
   .fe-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
   .fe-card .btn-solid:disabled{opacity:.5;cursor:default}
+  .fe-doms{margin:10px 0 6px;padding:10px 12px;border:1px solid var(--border-soft);border-radius:10px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+  .fe-doms b{color:var(--ink-1)} .fe-doms a{color:var(--accent-hi);white-space:nowrap}
+  .fe-tally{margin:8px 0 4px;font-size:13.5px;line-height:1.75;color:var(--ink-2)}
+  .fe-tally b{color:var(--ink-1)} .fe-tally .su-show{margin-left:2px}
+  .fe-cat{margin-left:0} .fe-cat select{max-width:230px}
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
@@ -20369,8 +20374,29 @@ function lintDraft(subject, body) {
 // hands back). Bring Hunter's file back = saveFoundEmails: every line shown
 // first, ticks, then Save fills only empty email fields. Undo names who
 // loses theirs first (undoFoundEmails). Nothing is emailed from here.
-var FE = { data: null, err: '', minDays: 21, on: { noaccept: true, quiet: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
-var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB title', 'SB LinkedIn', 'SB id'];
+// Later that day ("about 900 brands … get all those brands into our cold
+// email outreach … a download … that has a list of all the brands and then
+// probably the people"): a third group, brands not reached out to yet — their
+// best few people each (FE.per: 3 / 5 / 10 / everyone), on the same file —
+// and a second file, the websites of the ones with nobody to look up, for
+// Hunter's Domain Search (one a line).
+// Then ("Only 210 brands, not ~900" · "separate by category too"): one line
+// that puts every brand in exactly one place (d.tally, per category — on the
+// file, has an email, nobody on file, invited too recently, on Zach's list,
+// in talks, held back, set aside), and the category everywhere: a menu that
+// narrows the counts, the list and all three files (FE.cat), the files sorted
+// by category with its name in "SB category".
+var FE = { data: null, err: '', minDays: 21, per: 3, cat: '', on: { noaccept: true, quiet: true, fresh: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+var FE_GROUPS = ['noaccept', 'quiet', 'fresh'];
+var FE_DOMAINS = 'https://hunter.io/bulks/domain-search';
+var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB title', 'SB LinkedIn', 'SB id'];
+// Where a brand stands, in the order the card says it (find-emails.ts BrandSpot).
+var FE_SPOTS = [
+  ['list', 'have someone to look up'], ['ready', 'already have an email'], ['nobody', 'have nobody on file'],
+  ['tooNew', ''], ['emailed', 'already emailed'], ['waiting', 'where someone accepted — on Zach’s list'],
+  ['talking', 'replied, in talks or said no'], ['held', 'the queue holds back (giants, Skip categories, too small)'],
+  ['known', 'with a deal, a show or a Show Board request'], ['off', 'archived or set aside'], ['other', 'other']
+];
 var FE_HUNTER = 'https://hunter.io/bulks/email-finder';
 var FE_SKIP = {
   same: 'already saved', has: 'already have another email — left as it is', invalid: 'Hunter says the address doesn’t work',
@@ -20395,9 +20421,9 @@ function feShell() {
 
 function feLoad() {
   if (!feShell()) return Promise.resolve();
-  var asked = FE.minDays;
-  return api('noAnswerList', { minDays: asked }).then(function (d) {
-    if (asked !== FE.minDays) return;
+  var asked = FE.minDays, per = FE.per;
+  return api('noAnswerList', { minDays: asked, perBrand: per }).then(function (d) {
+    if (asked !== FE.minDays || per !== FE.per) return;
     if (!d || !d.counts || !Array.isArray(d.people)) throw new Error('no answer');
     FE.data = d; FE.err = '';
     feRender();
@@ -20407,9 +20433,35 @@ function feLoad() {
   });
 }
 
-function feRows() {
-  return FE.data ? FE.data.people.filter(function (p) { return FE.on[p.group]; }) : [];
+// '' = every category; '~' = brands with none.
+function feCat(p) { return p.category || '~'; }
+function feCatName(k) { return k === '~' ? 'No category' : (CAT_NAMES[k] || k); }
+function feCatRank(k) { var i = CAT_KEYS.indexOf(k); return i < 0 ? CAT_KEYS.length : i; }
+function feInCat(p) { return !FE.cat || feCat(p) === FE.cat; }
+// By category, in the site's category order; inside one, the order they came in.
+function feByCat(list) {
+  return list.map(function (p, i) { return { p: p, i: i }; }).sort(function (a, b) {
+    return feCatRank(feCat(a.p)) - feCatRank(feCat(b.p)) || a.i - b.i;
+  }).map(function (x) { return x.p; });
 }
+function feRows() {
+  return FE.data ? feByCat(FE.data.people.filter(function (p) { return FE.on[p.group] && feInCat(p); })) : [];
+}
+// Every brand in one place: the whole roster's, or the chosen category's.
+function feTally() {
+  var t = (FE.data && FE.data.tally) || {}, out = {}, total = 0;
+  Object.keys(t).forEach(function (k) {
+    if (FE.cat && (k || '~') !== FE.cat) return;
+    Object.keys(t[k]).forEach(function (s) { out[s] = (out[s] || 0) + t[k][s]; total += t[k][s]; });
+  });
+  return { by: out, total: total };
+}
+function feCats() {
+  var t = (FE.data && FE.data.tally) || {};
+  return Object.keys(t).map(function (k) { return { key: k || '~', n: t[k].list || 0 }; })
+    .sort(function (a, b) { return feCatRank(a.key) - feCatRank(b.key); });
+}
+function feFileName(kind, d) { return 'sb-' + kind + (FE.cat ? '-' + (FE.cat === '~' ? 'no-category' : FE.cat) : '') + '-' + d.today + '.csv'; }
 function feCsv(grid) {
   var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
   return grid.map(function (r) { return r.map(cell).join(','); }).join('\r\n') + '\r\n';
@@ -20422,44 +20474,71 @@ function feSaveFile(name, text) {
   a.click();
   setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
 }
-function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : 'Didn’t accept'; }
+function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : g === 'fresh' ? 'Not reached out to yet' : 'Didn’t accept'; }
+function feReady() {
+  return FE.data ? feByCat((FE.data.ready || []).filter(function (p) { return FE.on[p.group] && feInCat(p); })) : [];
+}
+// One company a line for Hunter's Domain Search: its website, else its name.
+function feDomainLines(list) {
+  var seen = {}, out = [];
+  (list || []).forEach(function (r) {
+    var v = String(r.domain || r.company || '').trim(), k = v.toLowerCase();
+    if (!v || seen[k]) return;
+    seen[k] = 1; out.push(v);
+  });
+  return out;
+}
 
 function feRender() {
   var top = document.getElementById('fe-top');
   if (!top) return;
   var d = FE.data;
-  var title = '<b>Emails for people who didn’t answer on LinkedIn</b>';
+  var title = '<b>Find emails with Hunter — every brand we’re not talking to</b>';
   if (!d) {
     top.innerHTML = '<div class="fe-h">' + title + '</div><div class="fe-dim">' +
-      (FE.err ? 'Couldn’t count them: ' + esc(FE.err) + ' <button class="su-show" data-fe="retry">Try again</button>' : 'Counting who didn’t answer…') + '</div>';
+      (FE.err ? 'Couldn’t count them: ' + esc(FE.err) + ' <button class="su-show" data-fe="retry">Try again</button>' : 'Counting who needs an email…') + '</div>';
     return;
   }
-  var c = d.counts, rows = feRows();
+  var c = d.counts, rows = feRows(), have = feReady();
+  var doms = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+  var tl = feTally();
+  var cats = '<option value="">All categories</option>' + feCats().map(function (o) {
+    return '<option value="' + esc(o.key) + '"' + (FE.cat === o.key ? ' selected' : '') + '>' + esc(feCatName(o.key)) + ' (' + o.n + ')</option>';
+  }).join('');
+  var spots = FE_SPOTS.filter(function (o) { return tl.by[o[0]]; }).map(function (o) {
+    var n = tl.by[o[0]];
+    if (o[0] === 'tooNew') return n + ' invited less than ' + plural(d.minDays, 'day') + ' ago <button class="su-show" data-fe="anytime">Include them</button>';
+    return (o[0] === 'list' ? '<b>' + n + '</b>' : n) + ' ' + o[1];
+  });
+  var perWords = FE.per ? 'the best ' + FE.per + ' a brand' : 'everyone';
   var brands = {};
   rows.forEach(function (r) { brands[r.brandId] = 1; });
   var nb = Object.keys(brands).length;
   var noDom = rows.filter(function (r) { return !r.domain; }).length;
-  var left = [
-    c.tooNew ? c.tooNew + ' invited less than ' + plural(d.minDays, 'day') + ' ago' : '',
+  // People (not brands) the file leaves out — the whole roster's numbers, so only without a category chosen.
+  var left = FE.cat ? [] : [
     c.noName ? c.noName + ' whose name LinkedIn cut short' : '',
     c.emailed ? c.emailed + ' already emailed' : '',
-    c.waitingBrands ? plural(c.waitingBrands, 'brand') + ' where someone accepted and is still on Zach’s list' : '',
-    c.offBrands ? plural(c.offBrands, 'brand') + ' archived or marked do not email' : ''
+    c.freshMore ? c.freshMore + ' more at brands not reached yet, past ' + perWords : ''
   ].filter(Boolean);
-  var chip = function (g, label, n) {
-    return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + n + '</button>';
+  var inGroup = function (g) { return d.people.filter(function (p) { return p.group === g && feInCat(p); }).length; };
+  var chip = function (g, label) {
+    return '<button class="chip' + (FE.on[g] ? ' active' : '') + '" data-fe="group" data-g="' + g + '" aria-pressed="' + (FE.on[g] ? 'true' : 'false') + '">' + label + ' · ' + inGroup(g) + '</button>';
   };
   var days = [[21, '21 days ago'], [14, '14 days ago'], [7, '7 days ago'], [0, 'any time']].map(function (o) {
     return '<option value="' + o[0] + '"' + (FE.minDays === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
   }).join('');
+  var pers = [[3, 'their best 3'], [5, 'their best 5'], [10, 'their best 10'], [0, 'everyone on file']].map(function (o) {
+    return '<option value="' + o[0] + '"' + (FE.per === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('');
   top.innerHTML =
     '<div class="fe-h">' + title +
-      '<span class="fe-dim">Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
+      '<span class="fe-dim">People who didn’t answer on LinkedIn, and brands not reached out to yet. Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
     '<div class="fe-grid">' +
       '<div class="su-tile"><div class="su-h">Need an email</div><div class="su-big" id="fe-need">' + rows.length + '<span>' + (rows.length === 1 ? ' person' : ' people') + '</span></div>' +
-        '<div class="su-sub">at ' + plural(nb, 'brand') + ' nobody answered from</div></div>' +
-      '<div class="su-tile"><div class="su-h">Already have an email</div><div class="su-big" id="fe-have">' + c.have + '<span>' + (c.have === 1 ? ' person' : ' people') + '</span></div>' +
-        '<div class="su-sub">never emailed' + (c.have ? ' · <button class="su-show" data-fe="ready">Download them</button>' : '') + '</div></div>' +
+        '<div class="su-sub">at ' + plural(nb, 'brand') + ' we’re not talking to</div></div>' +
+      '<div class="su-tile"><div class="su-h">Already have an email</div><div class="su-big" id="fe-have">' + have.length + '<span>' + (have.length === 1 ? ' person' : ' people') + '</span></div>' +
+        '<div class="su-sub">never emailed' + (have.length ? ' · <button class="su-show" data-fe="ready">Download them</button>' : '') + '</div></div>' +
       '<div class="su-tile fe-steps">' +
         '<div class="fe-step"><span class="fe-num">1</span><button class="btn-solid" data-fe="download"' + (rows.length ? '' : ' disabled') + '>Download the list for Hunter (' + rows.length + ')</button></div>' +
         '<div class="fe-step"><span class="fe-num">2</span><span>In Hunter: <b>Bulks → Email Finder</b>, upload it, then download the result. <a href="' + FE_HUNTER + '" target="_blank" rel="noopener">Open Hunter ↗</a></span></div>' +
@@ -20467,12 +20546,18 @@ function feRender() {
       '</div>' +
     '</div>' +
     '<div class="fe-row">' +
-      chip('noaccept', 'Didn’t accept', c.noaccept) + chip('quiet', 'Accepted, then no response', c.quiet) +
+      '<label class="fe-days fe-cat">Category <select class="inp" id="fe-cat">' + cats + '</select></label>' +
+      chip('noaccept', 'Didn’t accept') + chip('quiet', 'Accepted, then no response') + chip('fresh', 'Not reached out to yet') +
       '<label class="fe-days">Invite sent at least <select class="inp" id="fe-days">' + days + '</select></label>' +
+      '<label class="fe-days">Brands not reached yet: <select class="inp" id="fe-per">' + pers + '</select></label>' +
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
     '</div>' +
     (noDom ? '<div class="fe-dim">' + noDom + ' of them ' + (noDom === 1 ? 'has' : 'have') + ' no company website on file — Hunter looks ' + (noDom === 1 ? 'that one' : 'those') + ' up by company name.</div>' : '') +
-    (left.length ? '<div class="fe-dim" id="fe-left">Left out: ' + left.join(' · ') + '.</div>' : '') +
+    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>' + plural(doms.length, 'brand') + '</b> not reached yet ' + (doms.length === 1 ? 'has' : 'have') + ' nobody on file to look up. ' +
+      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
+      '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
+    (tl.total ? '<div class="fe-tally" id="fe-tally"><b>' + (FE.cat ? esc(feCatName(FE.cat)) + ' — ' + plural(tl.total, 'brand') : 'All ' + plural(tl.total, 'brand')) + ':</b> ' + spots.join(' · ') + '.</div>' : '') +
+    (left.length ? '<div class="fe-dim" id="fe-left">People left out: ' + left.join(' · ') + '.</div>' : '') +
     (d.last ? '<div class="fe-last" id="fe-last">Last file: ' + plural(d.last.count, 'email') + ' saved ' + shortDate(d.last.at) + (d.last.by ? ' by ' + esc(d.last.by) : '') +
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
   feRenderList();
@@ -20488,11 +20573,12 @@ function feRenderList() {
   if (!FE.more || !rows.length) { box.innerHTML = ''; return; }
   var cut = FE.all ? rows : rows.slice(0, 40);
   box.innerHTML = '<div class="fe-tablewrap" data-scroll="fe-list"><table class="fe-table"><thead><tr>' +
-    '<th>Person</th><th>Brand</th><th>Hunter looks them up at</th><th>Why they’re here</th><th>Last step</th></tr></thead><tbody>' +
+    '<th>Person</th><th>Brand</th><th>Category</th><th>Hunter looks them up at</th><th>Why they’re here</th><th>Last step</th></tr></thead><tbody>' +
     cut.map(function (r) {
       return '<tr><td><button class="fe-link" data-brand="' + esc(r.brandId) + '" data-focus="' + esc(r.contactId) + '" title="Open ' + esc(r.brandName) + ' at ' + esc(r.name) + '">' + esc(r.name) + '</button>' +
           (r.title ? '<div class="fe-dim">' + esc(r.title) + '</div>' : '') + '</td>' +
         '<td>' + esc(r.brandName) + '</td>' +
+        '<td>' + esc(feCatName(feCat(r))) + '</td>' +
         '<td>' + (r.domain ? esc(r.domain) : esc(r.company) + ' <span class="fe-dim">(by name' + (r.parent && r.company === r.parent ? ' — its parent company' : '') + ')</span>') + '</td>' +
         '<td>' + feWhy(r.group) + '</td>' +
         '<td>' + (r.lastAt ? shortDate(r.lastAt) : '') + '</td></tr>';
@@ -20627,25 +20713,33 @@ function feOnClick(e) {
   if (a === 'group') {
     var g = t.getAttribute('data-g');
     FE.on[g] = !FE.on[g];
-    if (!FE.on.noaccept && !FE.on.quiet) FE.on[g === 'quiet' ? 'noaccept' : 'quiet'] = true;   // never both off
+    if (!FE_GROUPS.some(function (k) { return FE.on[k]; })) FE.on[g] = true;   // never all off
     feRender();
     return;
   }
   if (a === 'more') { FE.more = !FE.more; FE.all = false; feRender(); return; }
+  if (a === 'anytime') { FE.minDays = 0; FE.all = false; feLoad(); return; }
   if (a === 'all') { FE.all = true; feRenderList(); return; }
   if (a === 'download' && d) {
     var rows = feRows();
     if (!rows.length) return;
-    feSaveFile('sb-need-emails-' + d.today + '.csv', feCsv([FE_HEAD].concat(rows.map(function (r) {
-      return [r.first, r.last, r.company, r.domain || '', r.brandName, r.title || '', r.linkedinUrl || '', r.contactId];
+    feSaveFile(feFileName('need-emails', d), feCsv([FE_HEAD].concat(rows.map(function (r) {
+      return [r.first, r.last, r.company, r.domain || '', r.brandName, feCatName(feCat(r)), r.title || '', r.linkedinUrl || '', r.contactId];
     }))));
     toast('Downloaded ' + plural(rows.length, 'person', 'people') + ' — upload it in Hunter');
     return;
   }
   if (a === 'ready' && d) {
-    feSaveFile('sb-have-emails-' + d.today + '.csv', feCsv([['First name', 'Last name', 'Email', 'Brand', 'Title', 'LinkedIn', 'Why']].concat(d.ready.map(function (r) {
-      return [r.first || r.name, r.last, r.email, r.brandName, r.title || '', r.linkedinUrl || '', feWhy(r.group)];
+    feSaveFile(feFileName('have-emails', d), feCsv([['First name', 'Last name', 'Email', 'Brand', 'Category', 'Title', 'LinkedIn', 'Why']].concat(feReady().map(function (r) {
+      return [r.first || r.name, r.last, r.email, r.brandName, feCatName(feCat(r)), r.title || '', r.linkedinUrl || '', feWhy(r.group)];
     }))));
+    return;
+  }
+  if (a === 'domains' && d) {
+    var lines = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+    if (!lines.length) return;
+    feSaveFile(feFileName('brand-websites', d), lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
+    toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');
     return;
   }
   if (a === 'pick') { document.getElementById('fe-file').click(); return; }
@@ -20663,6 +20757,8 @@ function feOnChange(e) {
   // The box is emptied once read, so choosing the same file again still counts as a choice.
   if (t.id === 'fe-file') { var file = t.files && t.files[0]; feTakeFile(file); t.value = ''; return; }
   if (t.id === 'fe-days') { FE.minDays = Number(t.value) || 0; FE.all = false; feLoad(); return; }
+  if (t.id === 'fe-per') { FE.per = Number(t.value) || 0; FE.all = false; feLoad(); return; }
+  if (t.id === 'fe-cat') { FE.cat = t.value || ''; FE.all = false; feRender(); return; }
   var id = t.getAttribute && t.getAttribute('data-fetick');
   if (id) { FE.tick[id] = t.checked; feSyncSave(); }
 }
@@ -20678,7 +20774,8 @@ function feOnChange(e) {
 // emails them. What it did comes back here (sent, replied, bounced,
 // unsubscribed) — live through its webhook, and by the sync. Anyone who
 // stops or answers on the dashboard is taken back out of Instantly.
-var INS = { data: null, err: '', pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false };
+var INS = { data: null, err: '', pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false, all: false };
+var INS_ROWS = 150;
 var INS_KEYS_URL = 'https://app.instantly.ai/app/settings/integrations';
 var INS_SYNC_EVERY = 10 * 60 * 1000;
 var INS_FOLDS = [['replied', 'Replied'], ['unsubscribed', 'Unsubscribed'], ['bounced', 'Bounced'], ['removed', 'Taken out']];
@@ -20817,30 +20914,42 @@ function insRender() {
   insRenderPeople();
 }
 
-// Everyone who'd go, before anyone does.
+// Everyone who'd go, before anyone does. Ticks are kept by person.
+function insSendLines() { return INS.pv ? INS.pv.lines.filter(function (l) { return l.action === 'send'; }) : []; }
 function insRenderPv() {
   var box = document.getElementById('ins-pv');
   if (!box) return;
   var p = INS.pv;
   if (!p) { box.innerHTML = ''; return; }
-  var send = p.lines.filter(function (l) { return l.action === 'send'; });
+  var send = insSendLines();
   var skip = p.lines.filter(function (l) { return l.action !== 'send'; });
-  var unticked = send.filter(function (l) { return !l.tick; }).length;
+  var fresh = send.filter(function (l) { return l.group === 'fresh'; }).length;
+  var unsure = send.filter(function (l) { return !l.tick && l.group !== 'fresh'; }).length;
   var camp = p.campaign;
+  // A chip per kind of person on the list: a click ticks (or unticks) them all.
+  var groups = [];
+  send.forEach(function (l) { var g = l.group || 'noaccept'; if (groups.indexOf(g) < 0) groups.push(g); });
+  var chips = groups.length > 1 || fresh ? groups.map(function (g) {
+    return '<button class="chip" data-ins="group" data-g="' + g + '" title="Tick or untick everyone in this group"></button>';
+  }).join('') : '';
+  var cut = INS.all ? send : send.slice(0, INS_ROWS);
   box.innerHTML = '<div class="fe-pv">' +
     '<div class="fe-pvh"><b>' + plural(send.length, 'person', 'people') + ' at ' + plural(p.counts.brands, 'brand') + ' could go</b>' +
       (camp ? '<span class="fe-dim">to “' + esc(camp.name) + '” · ' + esc(camp.statusWord) + '</span>' : '') + '</div>' +
     (INS.stale ? '<div class="fe-warn">Something changed since you looked — this is how it stands now. Check it and send again.</div>' : '') +
     (camp ? '<div class="' + (camp.sends ? 'fe-warn' : 'fe-dim') + '" id="ins-when">' +
       (camp.sends ? 'This campaign is running: Instantly starts emailing them on its next sending slot.' : 'This campaign is ' + esc(camp.statusWord.toLowerCase()) + ': nothing goes out until you start it in Instantly.') + '</div>' : '') +
-    (unticked ? '<div class="fe-warn">' + unticked + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</div>' : '') +
+    (unsure ? '<div class="fe-warn" id="ins-unsure">' + unsure + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</div>' : '') +
+    (fresh ? '<div class="fe-warn" id="ins-fresh">' + fresh + ' at brands not reached on LinkedIn yet start unticked: once Instantly emails a brand, the LinkedIn queue stops picking it by itself. Tick the ones you’d rather email.</div>' : '') +
+    (chips ? '<div class="fe-row" id="ins-groups">' + chips + '</div>' : '') +
     (send.length
       ? '<div class="fe-tablewrap" data-scroll="ins-pv"><table class="fe-table"><thead><tr><th></th><th>Person</th><th>Brand</th><th>Email</th><th>The address</th></tr></thead><tbody>' +
-        send.map(function (l) {
-          return '<tr><td class="fe-tk"><input type="checkbox" data-instick="' + esc(l.targetId) + '"' + (INS.tick[l.targetId] ? ' checked' : '') + ' aria-label="Send ' + esc(l.name) + ' to Instantly"></td>' +
+        cut.map(function (l) {
+          return '<tr><td class="fe-tk"><input type="checkbox" data-instick="' + esc(l.contactId) + '"' + (INS.tick[l.contactId] ? ' checked' : '') + ' aria-label="Send ' + esc(l.name) + ' to Instantly"></td>' +
             '<td>' + esc(l.name) + (l.title ? '<div class="fe-dim">' + esc(l.title) + '</div>' : '') + '</td><td>' + esc(l.brandName) + '</td><td>' + esc(l.email) + '</td>' +
             '<td class="' + (l.tick ? 'fe-ok' : 'fe-maybe') + '">' + esc(l.why) + '</td></tr>';
-        }).join('') + '</tbody></table></div>'
+        }).join('') + '</tbody></table></div>' +
+        (send.length > cut.length ? '<div class="fe-foot"><button class="su-show" data-ins="all">Show all ' + send.length + '</button><span class="fe-dim">Ticks count for everyone, shown or not.</span></div>' : '')
       : '<div class="fe-dim">Nobody to send.</div>') +
     (skip.length
       ? '<details class="fe-skip"><summary>' + skip.length + ' left out</summary><ul>' +
@@ -20848,7 +20957,7 @@ function insRenderPv() {
       : '') +
     '<div class="fe-foot">' +
       '<button class="btn-solid" data-ins="send" id="ins-send"></button>' +
-      (unticked ? '<button class="su-show" data-ins="tickall">Tick all</button>' : '') +
+      '<button class="su-show" data-ins="tickall">Tick all</button>' +
       '<button class="su-show" data-ins="ticknone">Untick all</button>' +
       '<button class="btn-ghost" data-ins="cancel">Cancel</button>' +
       '<span class="fe-dim">Only their name, title, company, website and email go to Instantly.</span>' +
@@ -20856,15 +20965,30 @@ function insRenderPv() {
   '</div>';
   insSyncSend();
 }
-function insTicked() {
-  return INS.pv ? INS.pv.lines.filter(function (l) { return l.action === 'send' && INS.tick[l.targetId]; }).map(function (l) { return l.targetId; }) : [];
+function insSyncBoxes() {
+  [].forEach.call(document.querySelectorAll('#ins-pv input[data-instick]'), function (box) { box.checked = !!INS.tick[box.getAttribute('data-instick')]; });
+  insSyncSend();
 }
+function insTicked() {
+  return insSendLines().filter(function (l) { return INS.tick[l.contactId]; }).map(function (l) { return l.contactId; });
+}
+// The Send button's count and each group chip's "n of m" — in place, so a
+// tick never redraws (or scrolls) the list.
 function insSyncSend() {
   var b = document.getElementById('ins-send');
   if (!b) return;
   var n = insTicked().length;
   b.textContent = INS.sending ? 'Sending…' : 'Send ' + plural(n, 'person', 'people') + ' to Instantly';
   b.disabled = INS.sending || !n || !(INS.pv && INS.pv.campaign);
+  var send = insSendLines();
+  [].forEach.call(document.querySelectorAll('#ins-groups [data-g]'), function (chip) {
+    var g = chip.getAttribute('data-g');
+    var rows = send.filter(function (l) { return (l.group || 'noaccept') === g; });
+    var on = rows.filter(function (l) { return INS.tick[l.contactId]; }).length;
+    chip.textContent = feWhy(g) + ' · ' + on + ' of ' + rows.length;
+    chip.classList.toggle('active', on === rows.length);
+    chip.setAttribute('aria-pressed', on === rows.length ? 'true' : 'false');
+  });
 }
 
 // Who replied, unsubscribed, bounced or was taken back out — a name opens
@@ -20886,10 +21010,11 @@ function insRenderPeople() {
 }
 
 function insPreview(fresh) {
-  return api('sendToInstantly', {}).then(function (p) {
+  return api('sendToInstantly', { perBrand: FE.per }).then(function (p) {
     INS.pv = p;
+    if (fresh) INS.all = false;
     var tick = {};
-    p.lines.forEach(function (l) { if (l.action === 'send') tick[l.targetId] = fresh || INS.tick[l.targetId] == null ? l.tick : INS.tick[l.targetId]; });
+    p.lines.forEach(function (l) { if (l.action === 'send') tick[l.contactId] = fresh || INS.tick[l.contactId] == null ? l.tick : INS.tick[l.contactId]; });
     INS.tick = tick;
     insRender();
   }).catch(function (e) { toast(e.message || 'Couldn’t list them'); });
@@ -20902,12 +21027,12 @@ function insSend() {
       : 'The campaign is ' + p.campaign.statusWord.toLowerCase() + ' — nothing goes out until you start it in Instantly.');
   if (!confirm(ask)) return;
   INS.sending = true; insSyncSend();
-  api('sendToInstantly', { ids: ids, confirm: true, expect: p.expect }).then(function (r) {
+  api('sendToInstantly', { ids: ids, confirm: true, expect: p.expect, perBrand: FE.per }).then(function (r) {
     INS.sending = false;
     if (r.stale) {
       INS.stale = true; INS.pv = r;
       var tick = {};
-      r.lines.forEach(function (l) { if (l.action === 'send') tick[l.targetId] = INS.tick[l.targetId] == null ? false : INS.tick[l.targetId]; });
+      r.lines.forEach(function (l) { if (l.action === 'send') tick[l.contactId] = INS.tick[l.contactId] == null ? false : INS.tick[l.contactId]; });
       INS.tick = tick;
       insRender();
       return;
@@ -20963,10 +21088,19 @@ function insOnClick(e) {
   if (a === 'send') { insSend(); return; }
   if (a === 'cancel') { INS.pv = null; INS.stale = false; insRender(); return; }
   if (a === 'tickall' || a === 'ticknone') {
-    INS.pv.lines.forEach(function (l) { if (l.action === 'send') INS.tick[l.targetId] = a === 'tickall'; });
-    insRenderPv();
+    insSendLines().forEach(function (l) { INS.tick[l.contactId] = a === 'tickall'; });
+    insSyncBoxes();
     return;
   }
+  if (a === 'group') {
+    var g = t.getAttribute('data-g');
+    var rows = insSendLines().filter(function (l) { return (l.group || 'noaccept') === g; });
+    var every = rows.every(function (l) { return INS.tick[l.contactId]; });
+    rows.forEach(function (l) { INS.tick[l.contactId] = !every; });
+    insSyncBoxes();
+    return;
+  }
+  if (a === 'all') { INS.all = true; insRenderPv(); return; }
   if (a === 'undo') { insUndo(); return; }
   if (a === 'sync') { insSync(false); return; }
   if (a === 'hookon') { insHook(true); return; }

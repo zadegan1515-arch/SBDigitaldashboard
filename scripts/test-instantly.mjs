@@ -74,7 +74,7 @@ t('a verified address goes, ticked; one Hunter couldn’t verify or a shared inb
   assert.equal(p.counts.ticked, 2)
   assert.equal(p.counts.brands, 1)
 })
-t('never someone already in Instantly, stopped, with no outreach row, or a bad address', () => {
+t('never someone already in Instantly, stopped, or with a bad address; no outreach row yet is fine', () => {
   const p = I.planPush([
     person({ id: 'a', handed: true }),
     person({ id: 'b', email: 'bo@coldco.com', stopped: 'Bo said they don’t want to continue' }),
@@ -83,9 +83,22 @@ t('never someone already in Instantly, stopped, with no outreach row, or a bad a
     person({ id: 'e', email: 'eve@coldco.com' }),
     person({ id: 'f', email: 'EVE@coldco.com' }),
   ])
-  assert.deepEqual(p.lines.map(l => l.action), ['handed', 'stopped', 'norow', 'bad', 'send', 'bad'])
+  assert.deepEqual(p.lines.map(l => l.action), ['handed', 'stopped', 'send', 'bad', 'send', 'bad'])
+  assert.equal(p.lines[2].targetId, null, 'they get a row when they’re sent')
   assert.match(p.lines[5].why, /Someone else on the list/)
-  assert.equal(p.counts.send, 1)
+  assert.equal(p.counts.send, 2)
+})
+t('someone at a brand not reached on LinkedIn yet can go, but starts unticked — an email makes the brand reached', () => {
+  const p = I.planPush([
+    person({ id: 'a', group: 'noaccept' }),
+    person({ id: 'b', email: 'bo@newco.com', brandId: 'b2', brandName: 'New Co', group: 'fresh', targetId: null }),
+    person({ id: 'c', email: 'cy@coldco.com', group: 'quiet' }),
+  ])
+  assert.deepEqual(p.lines.map(l => [l.action, l.tick, l.group]), [['send', true, 'noaccept'], ['send', false, 'fresh'], ['send', true, 'quiet']])
+  assert.match(p.lines[1].why, /Verified by Hunter · brand not reached on LinkedIn yet/)
+  assert.equal(p.counts.fresh, 1)
+  assert.equal(p.counts.ticked, 2)
+  assert.equal(p.counts.brands, 2)
 })
 t('the preview’s signature follows who would go and to which address', () => {
   const a = I.planPush([person({ id: 'a' }), person({ id: 'b', email: 'bo@coldco.com' })]).sig

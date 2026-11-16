@@ -28,13 +28,15 @@ const READY = [
   { contactId: 'r1', targetId: 't1', name: 'Flo Reyes', title: 'Head of Partnerships', brandId: 'b1', brandName: 'Alpha Energy', email: 'flo@alphaenergy.com', why: 'Verified by Hunter', tick: true },
   { contactId: 'r2', targetId: 't2', name: 'Gus Hall', title: 'VP Brand', brandId: 'b3', brandName: 'Gamma Drinks', email: 'gus@gammadrinks.com', why: 'Hunter couldn’t verify it', tick: false },
   { contactId: 'r3', targetId: 't3', name: 'Hana Ito', title: 'Events Lead', brandId: 'b3', brandName: 'Gamma Drinks', email: 'hana@gammadrinks.com', why: 'Already on file', tick: true },
+  // At a brand not reached on LinkedIn yet, with no outreach row: can go, starts unticked.
+  { contactId: 'r4', targetId: null, name: 'Nia New', title: 'Head of Partnerships', brandId: 'b7', brandName: 'Nova Pouch', email: 'nia@novapouch.com', why: 'Verified by Hunter · brand not reached on LinkedIn yet', tick: false, group: 'fresh' },
 ];
 const S = {};
 function reset() {
   Object.assign(S, { calls: [], connected: true, chosen: null, error: null, handed: [], stale: false, hook: false, last: null, synced: null, people: [], fail: '' });
 }
 reset();
-const ready = () => READY.filter((r) => !S.handed.includes(r.targetId));
+const ready = () => READY.filter((r) => !S.handed.includes(r.contactId));
 const campaign = () => CAMPS.find((c) => S.chosen && c.id === S.chosen) || null;
 const status = () => ({
   connected: S.connected, keyName: 'INSTANTLY_API_KEY', scopes: ['campaigns:read', 'leads:all', 'emails:read', 'webhooks:all', 'block_list_entries:all'],
@@ -45,9 +47,9 @@ const status = () => ({
   last: S.last,
 });
 const plan = () => {
-  const lines = ready().map((r) => Object.assign({ source: 'verified', action: 'send', group: 'noaccept' }, r))
+  const lines = ready().map((r) => Object.assign({ source: 'verified', action: 'send', group: r.contactId === 'r3' ? 'quiet' : 'noaccept' }, r))
     .concat([{ contactId: 'r9', targetId: 't9', name: 'Sy Stop', title: null, brandId: 'b9', brandName: 'Stopped Co', email: 'sy@stopped.com', source: 'onfile', action: 'stopped', why: 'Sy said they don’t want to continue', tick: false, group: null }]);
-  return { lines, counts: { send: ready().length, handed: 0, bad: 0, stopped: 1, norow: 0, ticked: ready().filter((r) => r.tick).length, brands: new Set(ready().map((r) => r.brandId)).size },
+  return { lines, counts: { send: ready().length, handed: 0, bad: 0, stopped: 1, ticked: ready().filter((r) => r.tick).length, brands: new Set(ready().map((r) => r.brandId)).size, fresh: ready().filter((r) => r.group === 'fresh').length },
     expect: S.stale ? 'new' : 'abc', campaign: campaign(), connected: true, chosen: campaign() ? { id: campaign().id, name: campaign().name } : null, error: null };
 };
 
@@ -77,7 +79,7 @@ const H = {
     const goes = [{ name: 'Flo Reyes', brandName: 'Alpha Energy', email: 'flo@alphaenergy.com' }];
     const stays = [{ name: 'Hana Ito', brandName: 'Gamma Drinks', email: 'hana@gammadrinks.com', why: 'already emailed' }];
     if (!a.confirm) return { preview: true, at: NOW, by: 'Leo', campaignName: 'Cold — no answer', count: 2, goes, stays };
-    S.handed = S.handed.filter((id) => id !== 't1'); S.last = null;
+    S.handed = S.handed.filter((id) => id !== 'r1'); S.last = null;
     return { applied: true, removed: 1, at: NOW, by: 'Leo', campaignName: 'Cold — no answer', count: 2, goes, stays };
   },
   instantlySync: () => {
@@ -148,7 +150,7 @@ async function main() {
   await open();
   await page.waitForSelector('#ins-pick');
   assert.deepEqual(await page.$$eval('#ins-pick option', (els) => els.map((o) => o.textContent)), ['Pick a campaign…', 'Cold — no answer · Active', 'Not started · Paused']);
-  assert.equal(await text('#ins-ready'), '3');
+  assert.equal(await text('#ins-ready'), '4');
   assert.equal(await page.$('[data-ins="review"]'), null, 'no Review button before a campaign is picked');
   assert.match(await text('.ins-go .su-sub'), /pick a campaign first/);
   assert.deepEqual(calls('instantlyStatus').pop().args, { live: true });
@@ -167,31 +169,44 @@ async function main() {
   await page.click('[data-ins="review"]');
   await page.waitForSelector('#ins-pv .fe-table');
   assert.deepEqual(await page.$$eval('#ins-pv tbody tr', (rows) => rows.map((r) => [r.cells[1].firstChild.textContent, r.cells[2].textContent, r.cells[3].textContent, r.querySelector('input').checked])),
-    [['Flo Reyes', 'Alpha Energy', 'flo@alphaenergy.com', true], ['Gus Hall', 'Gamma Drinks', 'gus@gammadrinks.com', false], ['Hana Ito', 'Gamma Drinks', 'hana@gammadrinks.com', true]]);
-  assert.match(await text('#ins-pv .fe-pvh'), /3 people at 2 brands could go/);
+    [['Flo Reyes', 'Alpha Energy', 'flo@alphaenergy.com', true], ['Gus Hall', 'Gamma Drinks', 'gus@gammadrinks.com', false], ['Hana Ito', 'Gamma Drinks', 'hana@gammadrinks.com', true],
+      ['Nia New', 'Nova Pouch', 'nia@novapouch.com', false]]);
+  assert.match(await text('#ins-pv .fe-pvh'), /4 people at 3 brands could go/);
   assert.match(await text('#ins-when'), /This campaign is running/);
-  assert.match(await text('#ins-pv'), /1 unticked/);
+  assert.match(await text('#ins-unsure'), /1 unticked — an address Hunter couldn’t verify/);
+  assert.match(await text('#ins-fresh'), /1 at brands not reached on LinkedIn yet start unticked: once Instantly emails a brand, the LinkedIn queue stops picking it by itself/);
+  assert.deepEqual(await page.$$eval('#ins-groups .chip', (els) => els.map((e) => [e.textContent, e.classList.contains('active')])),
+    [['Didn’t accept · 1 of 2', false], ['Accepted, then no response · 1 of 1', true], ['Not reached out to yet · 0 of 1', false]]);
   assert.match(await text('#ins-pv .fe-skip'), /1 left out/);
   assert.match(await text('#ins-pv .fe-skip'), /Sy Stop · Stopped Co Sy said they don’t want to continue/);
   assert.equal(await text('#ins-send'), 'Send 2 people to Instantly');
   assert.equal(calls('sendToInstantly').filter((c) => c.args.confirm).length, 0);
-  ok('Review names everyone who’d go, unverified unticked, the stopped left out — and sends nobody');
+  assert.deepEqual(calls('sendToInstantly').pop().args, { perBrand: 3 }, 'the same list the Hunter card shows');
+  ok('Review names everyone who’d go — unverified unticked, brands not reached yet unticked with why, the stopped left out — and sends nobody');
 
-  // ---- ticks, and a dismissed confirm ----
-  await page.click('#ins-pv input[data-instick="t3"]');
+  // ---- ticks (one, a whole group, all, none), and a dismissed confirm ----
+  await page.click('#ins-pv input[data-instick="r3"]');
   assert.equal(await text('#ins-send'), 'Send 1 person to Instantly');
+  assert.equal(await text('#ins-groups [data-g="quiet"]'), 'Accepted, then no response · 0 of 1');
+  await page.click('#ins-groups [data-g="fresh"]');
+  assert.equal(await text('#ins-send'), 'Send 2 people to Instantly');
+  assert.equal(await page.$eval('#ins-pv input[data-instick="r4"]', (b) => b.checked), true, 'the chip ticks its group');
+  assert.equal(await page.$eval('#ins-groups [data-g="fresh"]', (b) => b.classList.contains('active')), true);
+  await page.click('#ins-groups [data-g="fresh"]');
+  assert.equal(await page.$eval('#ins-pv input[data-instick="r4"]', (b) => b.checked), false, 'and unticks it again');
   await page.click('[data-ins="ticknone"]');
   assert.equal(await page.$eval('#ins-send', (b) => b.disabled), true);
   await page.click('[data-ins="tickall"]');
-  assert.equal(await text('#ins-send'), 'Send 3 people to Instantly');
-  await page.click('#ins-pv input[data-instick="t2"]');
+  assert.equal(await text('#ins-send'), 'Send 4 people to Instantly');
+  await page.click('#ins-pv input[data-instick="r2"]');
+  await page.click('#ins-pv input[data-instick="r4"]');
   accept = false;
   await page.click('#ins-send');
   await wait();
   assert.match(dialogs.slice(-1)[0], /Send 2 people to “Cold — no answer” in Instantly\?/);
   assert.match(dialogs.slice(-1)[0], /The campaign is running — Instantly starts emailing them/);
   assert.equal(calls('sendToInstantly').filter((c) => c.args.confirm).length, 0, 'Cancel on the question sends nobody');
-  ok('the Send button counts the ticks; its question names the campaign and says it’s running; Cancel sends nobody');
+  ok('the Send button and the group chips count the ticks; the question names the campaign and says it’s running; Cancel sends nobody');
 
   // ---- a stale answer: shown again, ticks kept ----
   accept = true;
@@ -199,7 +214,7 @@ async function main() {
   await page.click('#ins-send');
   await page.waitForSelector('#ins-pv .fe-warn');
   assert.match(await text('#ins-pv'), /Something changed since you looked/);
-  assert.deepEqual(await page.$$eval('#ins-pv tbody input', (els) => els.map((e) => e.checked)), [true, false, true], 'his ticks are kept');
+  assert.deepEqual(await page.$$eval('#ins-pv tbody input', (els) => els.map((e) => e.checked)), [true, false, true, false], 'his ticks are kept');
   assert.deepEqual(S.handed, []);
   ok('a stale answer shows the list again with the ticks kept, and sends nobody');
 
@@ -207,15 +222,15 @@ async function main() {
   await page.click('#ins-send');
   await page.waitForSelector('#ins-last');
   const sendCall = calls('sendToInstantly').filter((c) => c.args.confirm).pop().args;
-  assert.deepEqual(sendCall, { ids: ['t1', 't3'], confirm: true, expect: 'new' });
+  assert.deepEqual(sendCall, { ids: ['r1', 'r3'], confirm: true, expect: 'new', perBrand: 3 });
   assert.equal(await page.$('#ins-pv .fe-table'), null);
   assert.match(await text('#ins-note'), /Sent 2 people at 2 brands to “Cold — no answer”\./);
   assert.match(await text('#ins-note'), /1 Instantly wouldn’t take .*Kat Blocked/);
   assert.match(await text('#ins-note'), /23998 lead uploads left/);
   assert.equal(await text('#ins-waiting'), '2');
-  assert.equal(await text('#ins-ready'), '1');
+  assert.equal(await text('#ins-ready'), '2');
   assert.match(await text('#ins-last'), /Last sent: 2 people to “Cold — no answer”.*by Leo.*Undo \(2 not emailed yet\)/);
-  assert.equal(await text('#fe-have'), '1 person', 'the Hunter card’s count follows');
+  assert.equal(await text('#fe-have'), '2 people', 'the Hunter card’s count follows');
   ok('Send sends exactly the ticked people; the card says what went, what Instantly refused, and counts them');
 
   // ---- an error on send is said, nothing lost ----
@@ -226,7 +241,7 @@ async function main() {
   await page.click('#ins-send');
   await wait();
   assert.notEqual(await page.$('#ins-pv .fe-table'), null, 'the list stays open');
-  assert.equal(await text('#ins-send'), 'Send 1 person to Instantly');
+  assert.equal(await text('#ins-send'), 'Send 2 people to Instantly');
   S.fail = '';
   await page.click('#ins-pv [data-ins="cancel"]');
   ok('a refusal from Instantly leaves the list open to try again');
@@ -245,7 +260,7 @@ async function main() {
   assert.equal(calls('undoSendToInstantly').filter((c) => c.args.confirm).length, 1);
   assert.match(await text('#ins-note'), /Took 1 person back out of Instantly/);
   assert.equal(await text('#ins-waiting'), '1');
-  assert.equal(await text('#ins-ready'), '2');
+  assert.equal(await text('#ins-ready'), '3');
   ok('Undo names who comes back out and who stays before it takes anyone out');
 
   // ---- sync now, and who replied ----
