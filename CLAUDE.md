@@ -1788,6 +1788,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `LI_PER_DAY` (today = what's left after the brands the sweep / research logs show read today; `splitFillDays`,
   `fillWhy` in `src/lib/fill-schedule.ts`). Read-only forecast. `node scripts/test-fill-schedule.mjs`,
   `test-fill-schedule-ui.js` (page), and a check in `test-li-e2e.js` (same names, same order as liList).
+  **Brands with no LinkedIn page — before each run → after** (Leo, Nov 16 2026: "how many brands dont have a linkedin
+  page", then "i want updates on these numbers after the linkedin fills run"; his pick: on the dashboard). The run card on
+  Outreach → People (`liPagesHtml`, `#li-run-pages`, `LI_PAGE_TILES`, `.lip-` CSS) has four tiles: **No LinkedIn page
+  saved** (roster brands with no `Brand.linkedinUrl`, archived ones too; "N in play" under it), **Waiting on your pick**
+  (in play and on "Which LinkedIn page is theirs?", buyer or not; Pick them ↑ scrolls to it), **Next for the fill to find**
+  (in play, no buyer yet — coverage state `next`; a brand is waiting or next, never both), **Nobody on file** (in play,
+  nobody at all). Each reads `before → now` while the run is going (running / paused) and `before → after it` once it's
+  finished, with "now N" where it moved since; "N fewer" green, more to pick amber. Counts = `pageCounts` (coverage.ts,
+  pure) through `pageCountsOf` / `readPageCounts` (coverage-db.ts; the roster only, never a person). A run keeps
+  `pages.before` from its `liRun` start — a run already going takes its first word's count, and the card then says "since
+  <time>" — and `pages.after` from each pause and its end (`pagesWanted`, `cleanPageCounts`, `recordRun(db, ev, pages)` in
+  li-report.ts: the counts are read only for those events, before the lock, and a read that fails never costs the report
+  its event); `linkedinPeople.pagesNow` = now. An earlier run's line carries "no LinkedIn page 310 → 300". A brand whose
+  saved page looks wrong is on Leo's list but isn't a no-page brand. On Nov 16 2026, mid-run: 300 of 938 with no page
+  (271 in play: 122 waiting on Leo, 64 next for the fill, 166 with nobody on file). Tests: `node scripts/test-li-report.mjs`,
+  `node scripts/test-coverage.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-run-pages.js` (page), `test-li-e2e.js`.
   On a profile (`/in/<slug>/`) the pill is **Send to dashboard** (Leo, Oct 2026: "it should just be send
   this contact to dashboard"): reads name / headline / current company (the SB · Log reader), the company
   box is editable, one click → `liCapture` with `handPicked` (one row; skips the buyer-title filter, keeps
@@ -1945,6 +1961,13 @@ SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), 
 board), CRM_SHEET_ID, REPORT_TOKEN (Claude's cloud token: reads the LinkedIn run reports, and may add
 Discover review rows for the daily brand hunt — never brands; 24+ characters, the same value in the Claude
 cloud environment's settings).
+
+**`DASHBOARD_TOKEN` is letters and numbers only** (Nov 16 2026: the Claude cloud environment's secret form refuses a
+value with spaces or symbols — "Paste only the token" — so a session couldn't be given the old one; Leo set a new one).
+In a cloud session the token is a network secret the proxy adds to every request to the site, never a variable: call with
+`NODE_USE_ENV_PROXY=1 DASHBOARD_TOKEN=proxy-injected node scripts/cc.mjs <fn>` (plain `node scripts/cc.mjs` gets a 405
+from the proxy) or curl with any placeholder bearer. A changed token needs a redeploy, and every other place that holds
+it (other Claude environments, Leo's Mac `.env.local`) needs the new value.
 
 ## Conventions
 - **Outreach runs Tuesday / Wednesday / Thursday only** — no Mondays, no Fridays, no weekends —

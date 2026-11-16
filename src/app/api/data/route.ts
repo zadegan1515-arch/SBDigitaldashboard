@@ -89,8 +89,8 @@ import { gradeDiscovery, gradeFromFit } from '@/lib/discover-grade'
 import { scoreBrand, ADDED_SOURCES, addedByLeo, priorityOf, isTopCategory, PRIORITIES, PRIORITY_POINTS, DEFAULT_CATEGORY_PRIORITY, type Priority, dollarsToCents, normUs, normBiz, cleanResearchRow, shortMoney, type FitResult, type ResearchRow } from '@/lib/brand-fit'
 import { buildStock, bestDealStage, refileMoves, remapPlanDays, brandKey } from '@/lib/stock'
 import { buyerKind, isBuyerTitle, countBuyers, BUYER_TARGET } from '@/lib/buyers'
-import { readCoverFacts, brandCover } from '@/lib/coverage-db'
-import { LI_PER_DAY } from '@/lib/coverage'
+import { readCoverFacts, brandCover, pageCountsOf } from '@/lib/coverage-db'
+import { LI_PER_DAY, type PageCounts } from '@/lib/coverage'
 import { parseWorkLog, WORK_LOG_MAX_CHARS } from '@/lib/work-log'
 import {
   sessionKey, sessionUrl, redactSecrets, askLine, chatTitle, digestReply, digestSummary, carryTicks, addAsk, chatStatus, isMachineText,
@@ -14422,8 +14422,15 @@ const handlers: Record<string, Handler> = {
       })
       .sort((a, b) => b.at.localeCompare(a.at))
     const owner = await readJsonSetting<LiOwner | null>(prisma, LI_OWNER_KEY, null)
+    // Brands with no LinkedIn page saved, as of now — the run card sets it
+    // beside the count each run kept from before it started (li-report.ts).
+    // Never worth failing the People list over.
+    let pagesNow: PageCounts | null = null
+    try {
+      pagesNow = pageCountsOf(brands.map(b => ({ ...b, titles: b.contacts.map(c => c.title) })), await readCoverFacts(prisma))
+    } catch { pagesNow = null }
     return {
-      brands: rows, runs, latestScript: LI_SCRIPT_VERSION, pageReview, liOwner: owner && (owner.name || owner.slug) ? owner : null,
+      brands: rows, runs, pagesNow, latestScript: LI_SCRIPT_VERSION, pageReview, liOwner: owner && (owner.name || owner.slug) ? owner : null,
       ...zachLists(await readHiddenLog(prisma), brands),
     }
   },

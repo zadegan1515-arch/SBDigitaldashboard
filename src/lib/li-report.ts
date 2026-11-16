@@ -12,6 +12,8 @@
 // /api/reports/linkedin (read-only, REPORT_TOKEN) for the morning check.
 // JSON in Setting["liRunReports"], newest run first, last 10 runs.
 
+import type { PageCounts } from './coverage'
+
 export const LI_RUNS_KEY = 'liRunReports'
 const KEEP_RUNS = 10
 const KEEP_BRANDS = 300
@@ -68,6 +70,11 @@ export type RunReport = {
   review?: number
   issues?: number
   issueBy?: Record<string, string | null>
+  // Brands with no LinkedIn page saved (coverage.ts pageCounts): `before`
+  // from when the run started — or, for a run already going when this
+  // shipped, from its first word after — and `after` from its last pause or
+  // its end. The card sets `before` beside now while the run is going.
+  pages?: { before?: PageCounts; after?: PageCounts }
 }
 
 export type RunEvent = {
@@ -97,6 +104,32 @@ export type RunEvent = {
   again?: boolean
   review?: number
   key?: string | null
+  // The page counts as this event arrives (recordRun reads them only when
+  // pagesWanted says the run keeps them).
+  pages?: PageCounts | null
+}
+
+// Does this event's run keep the page counts? Its start (before), its
+// first word when it has no `before` yet, and every pause and its end
+// (after). Not every brand: the card reads "now" itself.
+export function pagesWanted(run: RunReport | undefined | null, kind: RunEvent['kind']): boolean {
+  if (kind === 'start' || kind === 'pause' || kind === 'finish') return true
+  return !run || !run.pages || !run.pages.before
+}
+
+// What a count has to look like to be kept (the report is JSON in a
+// Setting, and the event comes off the wire): anything else is left out.
+const PAGE_KEYS: Array<Exclude<keyof PageCounts, 'at'>> = ['brands', 'noPage', 'inPlay', 'waiting', 'next', 'nobody']
+export function cleanPageCounts(v: unknown): PageCounts | null {
+  const o = v as Record<string, unknown> | null
+  if (!o || typeof o !== 'object' || typeof o.at !== 'string' || !Number.isFinite(Date.parse(o.at))) return null
+  const out = { at: o.at } as PageCounts
+  for (const k of PAGE_KEYS) {
+    const n = Number(o[k])
+    if (o[k] == null || !Number.isFinite(n) || n < 0) return null
+    out[k] = Math.floor(n)
+  }
+  return out
 }
 
 const str = (v: unknown, n: number) => (v == null || v === '' ? null : String(v).slice(0, n))
@@ -120,6 +153,14 @@ export function applyRunEvent(reports: RunReport[], ev: RunEvent, now = new Date
   run.lastAt = at
   if (ev.script) run.script = str(ev.script, 12)
   if (ev.reader) run.reader = num(ev.reader)
+
+  const snap = cleanPageCounts(ev.pages)
+  if (snap && pagesWanted(run, ev.kind)) {
+    const p = run.pages || (run.pages = {})
+    // A start is a new before; a run heard of late takes its first count.
+    if (ev.kind === 'start' || !p.before) { p.before = snap; delete p.after }
+    else p.after = snap
+  }
 
   if (ev.kind === 'start') {
     run.startedAt = at
@@ -196,10 +237,26 @@ export async function readRuns(db: SettingStore): Promise<RunReport[]> {
 
 // One writer at a time: a brand's report and the run's end can arrive
 // together, and a plain read-then-write would drop one of them.
-export async function recordRun(db: SettingStore & { $transaction?: any }, ev: RunEvent) {
+//
+// `pages` reads the page counts (coverage-db.ts readPageCounts). It's asked
+// only when the run keeps them for this event, and before the lock is
+// taken — a count that can't be read never costs the report its event.
+export async function recordRun(
+  db: SettingStore & { $transaction?: any },
+  ev: RunEvent,
+  pages?: () => Promise<PageCounts | null>,
+) {
+  let snap: PageCounts | null = null
+  if (pages && ev && ev.run) {
+    try {
+      const run = (await readRuns(db)).find(r => r && r.id === String(ev.run).slice(0, 40))
+      if (pagesWanted(run, ev.kind)) snap = await pages()
+    } catch { snap = null }
+  }
+  const event = snap ? { ...ev, pages: snap } : ev
   const write = async (tx: any) => {
     if (tx.$queryRaw) await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${LI_RUNS_KEY}))::text`
-    const next = applyRunEvent(await readRuns(tx), ev)
+    const next = applyRunEvent(await readRuns(tx), event)
     const v = JSON.stringify(next)
     await tx.setting.upsert({ where: { key: LI_RUNS_KEY }, create: { key: LI_RUNS_KEY, value: v }, update: { value: v } })
   }

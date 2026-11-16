@@ -5,7 +5,7 @@
 // morning check) use it, so every place counts the same way.
 
 import type { PrismaClient } from '@prisma/client'
-import { coverOf, coverCounts, type Cover, type CoverCounts } from './coverage'
+import { coverOf, coverCounts, pageCounts, type Cover, type CoverCounts, type PageCounts } from './coverage'
 import { readLiLog, type LiLog } from './li-sweep'
 import { readJsonSetting, answered, LI_REVIEW_KEY, LI_CONFIRMED_KEY, type Review, type Confirmed } from './li-review'
 import { parentOf } from './parents'
@@ -50,6 +50,39 @@ export function brandCover(b: CoverBrand, f: CoverFacts, now = Date.now()): Cove
     confirmed: f.confirmed[b.id] ?? null,
     zachDue: zachDue(f.hidden[b.id], now),
   }, { cap: COVER_CAP, now })
+}
+
+// Brands with no LinkedIn page saved, counted (coverage.ts pageCounts) —
+// the roster only, never a person (Show Board guest). Outreach → People's
+// run card reads it live; /api/ingest keeps one from before each run.
+export function pageCountsOf(
+  brands: Array<CoverBrand & { kind?: string | null }>,
+  f: CoverFacts,
+  now = Date.now(),
+): PageCounts {
+  return pageCounts(
+    brands.filter(b => !b.kind).map(b => ({
+      linkedinUrl: b.linkedinUrl,
+      state: brandCover(b, f, now).state,
+      inReview: !!f.review[b.id] && !answered(f.review[b.id], f.confirmed[b.id], b.linkedinUrl ?? null),
+      people: b.titles.length,
+    })),
+    new Date(now).toISOString(),
+  )
+}
+
+export async function readPageCounts(db: PrismaClient): Promise<PageCounts> {
+  const [brands, facts] = await Promise.all([
+    db.brand.findMany({
+      where: { kind: null },
+      select: {
+        id: true, name: true, aka: true, linkedinUrl: true, passedAt: true, doNotEmail: true,
+        contacts: { select: { title: true } },
+      },
+    }),
+    readCoverFacts(db),
+  ])
+  return pageCountsOf(brands.map(b => ({ ...b, titles: b.contacts.map(c => c.title) })), facts)
 }
 
 // Every brand's state, counted — no names, no people.

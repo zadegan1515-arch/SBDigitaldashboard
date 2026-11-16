@@ -17,7 +17,7 @@ for (const f of readdirSync(out)) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '\.\/([\w-]+)'/g, "from './$1.js'"))
 }
-const { coverOf, coverCounts, noBuyerFirst, NEED_STATES } = await import(pathToFileURL(join(out, 'coverage.js')).href)
+const { coverOf, coverCounts, noBuyerFirst, NEED_STATES, pageCounts, hasPage } = await import(pathToFileURL(join(out, 'coverage.js')).href)
 const { liRestsNow } = await import(pathToFileURL(join(out, 'li-sweep.js')).href)
 
 let n = 0
@@ -140,6 +140,27 @@ t('the fill: Schedule brands and asked-for names lead, then brands with no buyer
     'Focus research', 'Focus with buyer', 'Target with buyer', 'Research name', 'Big with buyer',
   ])
   assert.deepEqual(noBuyerFirst([]), [])
+})
+
+// Brands with no LinkedIn page saved (Leo, Nov 16 2026: "how many brands dont
+// have a linkedin page" … "updates on these numbers after the linkedin fills run").
+t('page counts: no page saved, in play, waiting on Leo, next for the fill, nobody on file', () => {
+  const at = '2026-11-16T20:00:00.000Z'
+  const row = (o = {}) => ({ linkedinUrl: null, state: 'next', inReview: false, people: 0, ...o })
+  const c = pageCounts([
+    row({ linkedinUrl: 'https://www.linkedin.com/company/lmnt/' }),          // has a page: only in `brands`
+    row({ linkedinUrl: '   ', state: 'next' }),                              // blank is no page: next for the fill
+    row({ state: 'off', inReview: true }),                                   // archived: counted in noPage only
+    row({ state: 'page', inReview: true, people: 2 }),                       // waiting on Leo
+    row({ state: 'covered', inReview: true, people: 3 }),                    // has a buyer, still his to pick
+    row({ state: 'covered', people: 4 }),                                    // has a buyer, nothing chasing a page
+    row({ state: 'noPage' }), row({ state: 'resting', people: 1 }),          // None of these / resting
+    row({ state: 'next', people: 1 }),
+  ], at)
+  assert.deepEqual(c, { at, brands: 9, noPage: 8, inPlay: 7, waiting: 2, next: 2, nobody: 2 })
+  assert.equal(c.waiting + c.next <= c.inPlay, true, 'a brand is waiting or next, never both')
+  assert.deepEqual(pageCounts([], at), { at, brands: 0, noPage: 0, inPlay: 0, waiting: 0, next: 0, nobody: 0 })
+  assert.equal(hasPage(null), false); assert.equal(hasPage(''), false); assert.equal(hasPage(' x '), true)
 })
 
 console.log(n + ' coverage tests passed')

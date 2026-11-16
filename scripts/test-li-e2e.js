@@ -447,6 +447,26 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(await prisma.contact.count({ where: { brandId: 'b_nat' } }), 0, 'nobody from the care agency');
     assert.ok(visits.some(v => /keywords=Native/.test(v)), 'looked Native up again');
     const lp = await data('linkedinPeople');
+    // Brands with no LinkedIn page saved: the run kept the count from its
+    // start and from its end, and the People list reads it now (Leo, Nov 16
+    // 2026: "i want updates on these numbers after the linkedin fills run").
+    {
+      const noPage = await prisma.brand.count({ where: { kind: null, OR: [{ linkedinUrl: null }, { linkedinUrl: '' }] } });
+      const roster = await prisma.brand.count({ where: { kind: null } });
+      const { before, after } = run.pages || {};
+      assert.ok(before && after, 'the run kept its before and its after');
+      for (const c of [before, after, lp.pagesNow])
+        for (const k of ['brands', 'noPage', 'inPlay', 'waiting', 'next', 'nobody']) assert.equal(Number.isInteger(c[k]) && c[k] >= 0, true, k + ' is a count');
+      assert.ok(Math.abs(Date.parse(before.at) - Date.parse(run.startedAt)) < 60000, 'before is from the run\'s start');
+      assert.ok(Date.parse(after.at) >= Date.parse(before.at));
+      assert.equal(lp.pagesNow.brands, roster); assert.equal(lp.pagesNow.noPage, noPage, 'now is the database\'s own count');
+      const { at: _a, ...end } = after, { at: _n, ...now } = lp.pagesNow;
+      assert.deepEqual(now, end, 'nothing moved since the run ended: now = after');
+      assert.ok(after.brands > before.brands, 'the brands the run made are on the roster after it');
+      assert.ok(lp.pagesNow.waiting + lp.pagesNow.next <= lp.pagesNow.inPlay && lp.pagesNow.nobody <= lp.pagesNow.inPlay && lp.pagesNow.inPlay <= lp.pagesNow.noPage, JSON.stringify(lp.pagesNow));
+      assert.equal(lp.runs[0].pages.before.noPage, before.noPage, 'the People list carries the run\'s counts for the card');
+      ok('the run kept its page counts (before ' + before.noPage + ' → after ' + after.noPage + ' with no LinkedIn page; ' + after.waiting + ' waiting on Leo) and the People list reads them now');
+    }
     const nat = lp.pageReview.find(e => e.brandId === 'b_nat');
     assert.equal(nat.why, 'wrong'); assert.equal(nat.pageIndustry, 'Individual and Family Services');
     assert.equal(nat.saved, 'https://www.linkedin.com/company/native-co./');
@@ -488,10 +508,20 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     {
       const ids = ['b_nn1', 'b_nn2', 'b_nn3', 'b_nn4', 'b_nn5', 'b_nn6'];
       for (const id of ids) await prisma.brand.create({ data: { id, name: 'Nonesuch ' + id, category: 'energy' } });
+      const was = (await data('linkedinPeople')).pagesNow;
       for (const id of ids) await ingest({ action: 'liMatched', brandId: id, candidates: [{ url: 'https://www.linkedin.com/company/' + id + '-a/', name: 'Other ' + id, subtitle: 'Software Development' }], me: { slug: 'leo-z', name: 'Leo Z' } });
-      assert.equal((await data('linkedinPeople')).pageReview.filter(e => ids.includes(e.brandId)).length, 6, 'all six on the list');
+      const six = await data('linkedinPeople');
+      assert.equal(six.pageReview.filter(e => ids.includes(e.brandId)).length, 6, 'all six on the list');
+      // The run card's count follows: six more brands wait on Leo's pick,
+      // and they were the fill's to find a moment ago.
+      assert.equal(six.pagesNow.waiting - was.waiting, 6, 'six more waiting on his pick');
+      assert.equal(was.next - six.pagesNow.next, 6, '…and no longer next for the fill');
+      assert.equal(six.pagesNow.noPage, was.noPage, 'still without a page');
       await Promise.all(ids.map(id => data('liPageNone', { brandId: id })));
-      assert.ok(!(await data('linkedinPeople')).pageReview.some(e => ids.includes(e.brandId)), 'all six off the list');
+      const none = await data('linkedinPeople');
+      assert.ok(!none.pageReview.some(e => ids.includes(e.brandId)), 'all six off the list');
+      assert.equal(none.pagesNow.waiting, was.waiting, 'None of these: no longer waiting on him');
+      assert.equal(none.pagesNow.next, was.next - 6, '…nor the fill\'s to find');
       const conf = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageConfirmed' } })).value);
       assert.deepEqual(ids.map(id => conf[id]), ids.map(() => 'none'), 'every answer kept');
       const rawRev = JSON.parse((await prisma.setting.findUnique({ where: { key: 'liPageReview' } })).value);

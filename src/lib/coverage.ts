@@ -107,6 +107,53 @@ export function coverCounts(list: Cover[]): CoverCounts {
   return out
 }
 
+// Brands with no LinkedIn page saved (Leo, Nov 16 2026: "how many brands
+// dont have a linkedin page", then "i want updates on these numbers after
+// the linkedin fills run" — his pick: on the dashboard). Counted the same
+// way wherever it shows: the run card on Outreach → People keeps one of
+// these from before each run (li-report.ts) and sets it beside now.
+//   noPage   roster brands with no page saved, archived ones too
+//   inPlay   … of those, not archived / do-not-email
+//   waiting  in play and on "Which LinkedIn page is theirs?" — Leo picks
+//   next     in play, no buyer on file yet: the fill looks for its page next
+//   nobody   in play with nobody on file at all
+export type PageCounts = {
+  at: string
+  brands: number
+  noPage: number
+  inPlay: number
+  waiting: number
+  next: number
+  nobody: number
+}
+
+export type PageRow = {
+  linkedinUrl?: string | null
+  // Where coverOf puts it (off = archived / do-not-email).
+  state: CoverState
+  // On "Which LinkedIn page is theirs?", whether it has a buyer or not.
+  inReview: boolean
+  // Everyone on file there.
+  people: number
+}
+
+export const hasPage = (url: string | null | undefined): boolean => !!String(url ?? '').trim()
+
+export function pageCounts(rows: PageRow[], at: string): PageCounts {
+  const out: PageCounts = { at, brands: rows.length, noPage: 0, inPlay: 0, waiting: 0, next: 0, nobody: 0 }
+  for (const r of rows) {
+    if (hasPage(r.linkedinUrl)) continue
+    out.noPage += 1
+    if (r.state === 'off') continue
+    out.inPlay += 1
+    // One a brand: Leo's pick comes before the fill's own search.
+    if (r.inReview) out.waiting += 1
+    else if (r.state === 'next') out.next += 1
+    if (!r.people) out.nobody += 1
+  }
+  return out
+}
+
 // The fill's worklist with the brands that have no buyer pulled forward:
 // after the Schedule's short brands (`planned`) and the names Leo asked
 // for by name (`asked`), ahead of everything else. Each group keeps the

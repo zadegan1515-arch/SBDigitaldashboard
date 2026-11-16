@@ -17,7 +17,7 @@ execSync(
   ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck',
   { stdio: 'inherit' },
 )
-const { applyRunEvent } = await import(pathToFileURL(join(out, 'li-report.js')).href)
+const { applyRunEvent, pagesWanted, cleanPageCounts, recordRun } = await import(pathToFileURL(join(out, 'li-report.js')).href)
 const { addToReview, sameMember, answered, openReview, putOnReview, updateReviewState } = await import(pathToFileURL(join(out, 'li-review.js')).href)
 
 let n = 0
@@ -133,6 +133,76 @@ t('"None of these" and a picked page are answers: their leftovers never show', (
   const r = openReview({ a: e('unclear'), b: e('unclear'), c: e('none') }, { a: 'none' })
   assert.deepEqual(Object.keys(r), ['b', 'c'])
 })
+
+// Brands with no LinkedIn page saved, before each run → after it (Leo, Nov 16
+// 2026: "i want updates on these numbers after the linkedin fills run").
+const pc = (noPage, m, o = {}) => ({ at: at(m).toISOString(), brands: 938, noPage, inPlay: noPage - 29, waiting: 122, next: 64, nobody: 166, ...o })
+
+t('page counts: a run keeps them from its start, and from each pause and its end', () => {
+  let r = applyRunEvent([], { kind: 'start', run: 'p1', pages: pc(300, 0) }, at(0))
+  assert.equal(r[0].pages.before.noPage, 300); assert.equal(r[0].pages.after, undefined)
+  r = applyRunEvent(r, { kind: 'brand', run: 'p1', name: 'LMNT', brandId: 'b1', seen: 9, added: 3, pages: pc(299, 1) }, at(1))
+  assert.equal(r[0].pages.before.noPage, 300, 'a brand never moves before')
+  assert.equal(r[0].pages.after, undefined, '…and is not an after: the card reads now itself')
+  r = applyRunEvent(r, { kind: 'pause', run: 'p1', why: 'the day’s 100', pages: pc(290, 2) }, at(2))
+  assert.equal(r[0].pages.after.noPage, 290)
+  r = applyRunEvent(r, { kind: 'resume', run: 'p1', pages: pc(289, 3) }, at(3))
+  assert.equal(r[0].pages.after.noPage, 290, 'carrying on keeps the pause’s count')
+  r = applyRunEvent(r, { kind: 'finish', run: 'p1', pages: pc(284, 4, { waiting: 131 }) }, at(4))
+  assert.deepEqual(r[0].pages, { before: pc(300, 0), after: pc(284, 4, { waiting: 131 }) })
+  // A new start of the same run id is a new before.
+  r = applyRunEvent(r, { kind: 'start', run: 'p1', pages: pc(280, 5) }, at(5))
+  assert.deepEqual(r[0].pages, { before: pc(280, 5) })
+})
+
+t('page counts: a run already going takes its first count as before; a bad count is left out', () => {
+  // Heard of mid-run (it started before the dashboard kept counts).
+  let r = applyRunEvent([], { kind: 'brand', run: 'old', name: 'Nuun', brandId: 'b2', seen: 4, added: 1 }, at(0))
+  assert.equal(r[0].pages, undefined)
+  assert.equal(pagesWanted(r[0], 'brand'), true, 'no before yet: its next word brings one')
+  r = applyRunEvent(r, { kind: 'brand', run: 'old', name: 'Liquid I.V.', brandId: 'b3', seen: 6, added: 2, pages: pc(295, 30) }, at(30))
+  assert.equal(r[0].pages.before.noPage, 295); assert.equal(r[0].pages.before.at, at(30).toISOString())
+  assert.equal(pagesWanted(r[0], 'brand'), false); assert.equal(pagesWanted(r[0], 'resume'), false)
+  assert.equal(pagesWanted(r[0], 'pause'), true); assert.equal(pagesWanted(r[0], 'finish'), true); assert.equal(pagesWanted(r[0], 'start'), true)
+  assert.equal(pagesWanted(undefined, 'brand'), true)
+  // Garbage off the wire never lands in the report.
+  for (const bad of [null, 'x', {}, { at: 'nope', brands: 1, noPage: 1, inPlay: 1, waiting: 0, next: 0, nobody: 0 },
+    { ...pc(1, 0), noPage: -1 }, { ...pc(1, 0), waiting: undefined }, { ...pc(1, 0), next: 'many' }]) {
+    assert.equal(cleanPageCounts(bad), null)
+    const x = applyRunEvent([], { kind: 'start', run: 'g', pages: bad }, at(0))
+    assert.equal(x[0].pages, undefined)
+  }
+  assert.deepEqual(cleanPageCounts({ ...pc(300.7, 0), extra: 'dropped' }), { ...pc(300, 0), inPlay: 271 })
+})
+
+await (async () => {
+  // recordRun asks for the counts only when the run keeps them, and a count
+  // that can't be read never costs the report its event.
+  const store = {}
+  const db = { setting: {
+    findUnique: async ({ where }) => store[where.key] != null ? { value: store[where.key] } : null,
+    upsert: async ({ where, create, update }) => { store[where.key] = (store[where.key] != null ? update : create).value },
+  } }
+  let asked = 0
+  const pages = (n) => async () => { asked++; return pc(n, 0) }
+  await recordRun(db, { kind: 'start', run: 'rr' }, pages(300))
+  await recordRun(db, { kind: 'brand', run: 'rr', name: 'LMNT', brandId: 'b1', seen: 9, added: 3, key: 'k1' }, pages(299))
+  await recordRun(db, { kind: 'brand', run: 'rr', name: 'Nuun', brandId: 'b2', seen: 2, added: 0, key: 'k2' }, pages(298))
+  assert.equal(asked, 1, 'brands of a run that has its before never read the counts')
+  await recordRun(db, { kind: 'finish', run: 'rr' }, pages(284))
+  assert.equal(asked, 2)
+  let run = JSON.parse(store.liRunReports)[0]
+  assert.equal(run.pages.before.noPage, 300); assert.equal(run.pages.after.noPage, 284)
+  assert.equal(run.brands.length, 2); assert.equal(run.status, 'finished')
+  await recordRun(db, { kind: 'start', run: 'broken' }, async () => { throw new Error('database away') })
+  run = JSON.parse(store.liRunReports).find(r => r.id === 'broken')
+  assert.equal(run.status, 'running', 'the start is kept'); assert.equal(run.pages, undefined)
+  await recordRun(db, { kind: 'brand', run: 'broken', name: 'Prime', brandId: 'b9', seen: 3, added: 1 }, pages(283))
+  assert.equal(JSON.parse(store.liRunReports).find(r => r.id === 'broken').pages.before.noPage, 283, 'its next word brings the count')
+  await recordRun(db, { kind: 'pause', run: 'nopages', why: 'paused' })
+  assert.equal(JSON.parse(store.liRunReports).find(r => r.id === 'nopages').pages, undefined, 'no reader given: as before')
+  n++
+})()
 
 await (async () => {
   // A fake store whose reads and writes interleave the way two requests do.

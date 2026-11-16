@@ -1839,6 +1839,18 @@
   .t-title{color:var(--ink-2)}
   .t-flag{color:var(--warn);font-weight:600}
   .t-meta{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13px;color:var(--ink-3);flex-wrap:wrap}
+  /* Run card: brands with no LinkedIn page, before the run → after (lip*) */
+  .lip{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-soft)}
+  .lip-h{font-size:13.5px;color:var(--ink-2)}
+  .lip-h b{color:var(--ink-1)}
+  .lip-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .lip-tile{flex:1 1 170px;min-width:150px;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
+  .lip-l{font-size:12.5px;color:var(--ink-3)}
+  .lip-n{font-size:20px;font-weight:700;color:var(--ink-1);margin-top:3px;white-space:nowrap}
+  .lip-n .was{color:var(--ink-3);font-weight:600}
+  .lip-n .arr{color:var(--ink-3);font-weight:400;margin:0 4px}
+  .lip-d{font-size:12.5px;color:var(--ink-3);margin-top:3px}
+  .lip-d .good{color:var(--good)} .lip-d .warn{color:var(--warn)}
   .status{font-weight:700;padding:2px 9px;border-radius:999px;font-size:12px;letter-spacing:.02em;background:var(--surface-2);color:var(--ink-2)}
   .status.sent{background:rgba(97,165,250,.14);color:#82b6fb}
   .status.accepted{background:rgba(67,198,232,.15);color:#6cd6f0}
@@ -13412,7 +13424,7 @@ function loadLinkedin() {
       var zb = document.getElementById('li-zach');
       if (zb && zb.style.display !== 'none' && zb.scrollIntoView) zb.scrollIntoView({ block: 'start' });
     }
-    renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null);
+    renderLiRuns(d.runs || [], d.latestScript || null, d.liOwner || null, d.pagesNow || null);
     loadLiClean();
     loadFillSched();
     var profiles = 0, brandsWith = 0;
@@ -13442,7 +13454,54 @@ function liVersionBehind(v, latest) {
   }
   return false;
 }
-function renderLiRuns(runs, latest, owner) {
+// Brands with no LinkedIn page saved, before this run → after it (Leo, Nov
+// 16 2026: "how many brands dont have a linkedin page", then "i want updates
+// on these numbers after the linkedin fills run"; his pick: on the
+// dashboard). `before` is what the run kept as it started (li-report.ts —
+// or, for a run already going when this shipped, at its first word after);
+// the other side is now while it's going, and what it kept at its end once
+// it's finished ("now N" beside it when something moved since).
+var LI_PAGE_TILES = [
+  { k: 'noPage', label: 'No LinkedIn page saved', tip: 'Brands on the roster with no LinkedIn page saved, archived ones too' },
+  { k: 'waiting', label: 'Waiting on your pick', tip: 'In play and on \u201cWhich LinkedIn page is theirs?\u201d above', pick: true },
+  { k: 'next', label: 'Next for the fill to find', tip: 'In play, no buyer on file yet: the fill looks for its page on a coming run' },
+  { k: 'nobody', label: 'Nobody on file', tip: 'In play, no LinkedIn page and nobody on file at all' }
+];
+function liPagesOk(c) { return !!c && typeof c === 'object' && typeof c.noPage === 'number' && typeof c.waiting === 'number'; }
+function liPagesHtml(r, now) {
+  var p = (r && r.pages) || {};
+  var b = liPagesOk(p.before) ? p.before : null, kept = liPagesOk(p.after) ? p.after : null;
+  now = liPagesOk(now) ? now : null;
+  var live = r.status === 'running' || r.status === 'paused';
+  var a = live ? (now || kept) : (kept || now);
+  if (!a) return '';
+  var when = function (iso) { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); };
+  // A run heard of late kept its count after it started: say since when.
+  var late = b && Math.abs(Date.parse(b.at) - Date.parse(r.startedAt)) > 5 * 60000;
+  var head = !b ? 'now'
+    : (late ? 'since ' + esc(when(b.at)) : 'before this run') + ' \u2192 ' + (a === now ? 'now' : 'after it');
+  var tiles = LI_PAGE_TILES.map(function (t) {
+    var x = Number(a[t.k]) || 0, w = b ? Number(b[t.k]) || 0 : null, d = w == null ? 0 : x - w;
+    // Fewer is the fill doing its job; more on "your pick" is work for Leo.
+    var word = w == null ? '' : !d ? 'no change'
+      : '<span class="' + (d < 0 ? 'good' : t.pick ? 'warn' : '') + '">' + Math.abs(d) + (d < 0 ? ' fewer' : ' more') + '</span>';
+    var extra = [];
+    if (t.k === 'noPage' && typeof a.inPlay === 'number') extra.push(a.inPlay + ' in play');
+    if (a !== now && now && Number(now[t.k]) !== x) extra.push('now ' + (Number(now[t.k]) || 0));
+    if (t.pick && x) extra.push('<a href="#" class="sd-link" data-lipages-pick="1">Pick them \u2191</a>');
+    return '<div class="lip-tile" data-lip="' + t.k + '" title="' + esc(t.tip) + '">' +
+      '<div class="lip-l">' + esc(t.label) + '</div>' +
+      '<div class="lip-n">' + (w == null ? '' : '<span class="was">' + w + '</span><span class="arr">\u2192</span>') + x + '</div>' +
+      '<div class="lip-d">' + [word].concat(extra).filter(Boolean).join(' \u00b7 ') + '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="lip" id="li-run-pages">' +
+    '<div class="lip-h"><b>Brands with no LinkedIn page</b> \u00b7 ' + head + '</div>' +
+    '<div class="lip-row">' + tiles + '</div>' +
+    (b ? '' : '<div class="t-meta" style="margin-top:8px">The change shows here from ' + (live ? 'this run\u2019s next brand' : 'the next run') + '.</div>') +
+  '</div>';
+}
+function renderLiRuns(runs, latest, owner, pagesNow) {
   var box = document.getElementById('li-runs');
   if (!box) return;
   if (!runs.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
@@ -13490,6 +13549,7 @@ function renderLiRuns(runs, latest, owner) {
         '</div>';
     })() +
     (lastPause ? '<div class="t-meta" style="margin-top:6px;color:var(--bad)">Paused: ' + esc(lastPause.why) + '</div>' : '') +
+    liPagesHtml(r, pagesNow) +
     (latest && r.script && liVersionBehind(r.script, latest)
       ? '<div class="t-meta" style="margin-top:6px;color:var(--warn)">This run used script ' + esc(r.script) + ' — ' + esc(latest) + ' is out. The pill on LinkedIn turns orange; one click there updates it.</div>' : '') +
     (problems.length
@@ -13511,6 +13571,8 @@ function renderLiRuns(runs, latest, owner) {
       return '<div class="t-meta" style="margin-top:8px;color:var(--ink-3)">Before: ' + esc(when(p.startedAt)) + ' · ' +
         p.brands.length + ' brands · ' + p.added + ' people · ' + esc(STATUS[p.status] || p.status) +
         (p.problems ? ' · ' + p.problems + ' unreadable page' + (p.problems === 1 ? '' : 's') : '') +
+        (p.pages && liPagesOk(p.pages.before) && liPagesOk(p.pages.after)
+          ? ' · no LinkedIn page ' + p.pages.before.noPage + ' \u2192 ' + p.pages.after.noPage : '') +
         ' · <a href="#" class="sd-link" data-lirun-detail="' + esc(p.id) + '">what it did</a></div>' +
         '<div data-lirun-box="' + esc(p.id) + '"></div>';
     }).join('') +
@@ -13874,6 +13936,12 @@ document.getElementById('linkedin').addEventListener('click', function (e) {
     if (!confirm('Put back everyone the last clean-up removed, and un-archive its brands?')) return;
     api('liCleanupUndo', {}).then(function (r) { toast('Put back ' + r.back + (r.brands ? ', un-archived ' + r.brands : '')); loadLinkedin(); })
       .catch(function (err) { toast(err.message || String(err)); });
+    return;
+  }
+  if (t.closest('[data-lipages-pick]')) {
+    e.preventDefault();
+    var pickBox = document.getElementById('li-review');
+    if (pickBox && pickBox.style.display !== 'none' && pickBox.scrollIntoView) pickBox.scrollIntoView({ block: 'start', behavior: 'smooth' });
     return;
   }
   var det = t.closest('[data-lirun-detail]');

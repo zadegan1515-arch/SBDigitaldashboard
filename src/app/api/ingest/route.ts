@@ -33,6 +33,7 @@ import {
 import { companySlug, companyPageUrl, profileSlug, profileUrl, storedProfileUrl, cleanName, personKey, roleFromHeadline, isBuyer, decideCompanyMatch, normalizeCompany, cleanBrandName, judgeDiscovery, industryFits, decideResearchMatch, nearName, pageLooksWrong, type LiCompany } from '@/lib/li-capture'
 import { markLiSwept, markLiResearch, sweptOutcome, LI_READER, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { recordRun } from '@/lib/li-report'
+import { readPageCounts } from '@/lib/coverage-db'
 import { recordHidden, markZachRead, updateHiddenLog, summarizeHidden, cleanViews } from '@/lib/li-hidden'
 import { PARENTS, parentOf, decideParentPage, siblingNamed, isParentCompany, LI_PARENT_PAGES_KEY } from '@/lib/parents'
 import {
@@ -1099,7 +1100,7 @@ export async function POST(req: NextRequest) {
           ms: body.ms ?? null, hiddenMs: body.hiddenMs, via: body.via || null, members: body.members ?? null,
           hiddenPeople: hiddenSum ? hiddenSum.n : null, hiddenLikely: hiddenSum ? hiddenSum.likely : null,
           issue: outcome?.issue ?? null, again: body.again === true, review: body.review, key: body.key ? String(body.key) : null,
-        })
+        }, () => readPageCounts(prisma))
       } catch { /* the report is a nicety; the sweep log above is what counts */ }
     }
     return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
@@ -1113,7 +1114,10 @@ export async function POST(req: NextRequest) {
       await recordRun(prisma, {
         kind, run: String(body.run), script: body.script, reader: Number(body.reader) || 0,
         focus: body.focus, items: body.items, why: body.why, stopped: !!body.stopped, newBrands: body.newBrands,
-      })
+        // Brands with no LinkedIn page saved, before the run and at its
+        // pauses and end (Leo, Nov 16 2026: "updates on these numbers after
+        // the linkedin fills run") — the run card shows before → after.
+      }, () => readPageCounts(prisma))
     } catch { /* non-fatal */ }
     return NextResponse.json({ ok: true, latest: LI_SCRIPT_VERSION }, { headers: cors })
   }
