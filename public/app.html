@@ -20365,10 +20365,16 @@ function lintDraft(subject, body) {
 // in talks, held back, set aside), and the category everywhere: a menu that
 // narrows the counts, the list and all three files (FE.cat), the files sorted
 // by category with its name in "SB category".
-var FE = { data: null, err: '', minDays: 21, per: 3, cat: '', on: { noaccept: true, quiet: true, fresh: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
-var FE_GROUPS = ['noaccept', 'quiet', 'fresh'];
+// Then ("include all of them, i want every brand on the file"): the wait
+// starts at any time, and two more groups are on — brands where someone
+// accepted (on Zach's list) and brands the queue holds back — each a chip,
+// each named in the file's "SB status". Every brand in one sheet = people to
+// look up + people with an email + a line per brand with nobody.
+var FE = { data: null, err: '', minDays: 0, per: 3, cat: '', on: { noaccept: true, quiet: true, working: true, fresh: true, held: true }, more: false, all: false, pv: null, csv: '', file: '', tick: {}, saving: false, note: '', stale: false };
+var FE_GROUPS = ['noaccept', 'quiet', 'working', 'fresh', 'held'];
+var FE_WHY = { noaccept: 'Didn’t accept', quiet: 'Accepted, then no response', working: 'Someone accepted — on Zach’s list', fresh: 'Not reached out to yet', held: 'Not reached out to yet — held back by the queue' };
 var FE_DOMAINS = 'https://hunter.io/bulks/domain-search';
-var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB title', 'SB LinkedIn', 'SB id'];
+var FE_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB status', 'SB title', 'SB LinkedIn', 'SB id'];
 // Where a brand stands, in the order the card says it (find-emails.ts BrandSpot).
 var FE_SPOTS = [
   ['list', 'have someone to look up'], ['ready', 'already have an email'], ['nobody', 'have nobody on file'],
@@ -20440,6 +20446,27 @@ function feCats() {
   return Object.keys(t).map(function (k) { return { key: k || '~', n: t[k].list || 0 }; })
     .sort(function (a, b) { return feCatRank(a.key) - feCatRank(b.key); });
 }
+// Every brand in one sheet (to read, not for Hunter): the people to look up,
+// the people who have an email, and a line for each brand with nobody on
+// file — by category, a brand's lines together.
+function feSheet() {
+  var d = FE.data;
+  if (!d) return [];
+  var rows = feRows().map(function (r) { return { p: r, row: [r.brandName, feCatName(feCat(r)), feWhy(r.group), r.first, r.last, r.title || '', '', r.domain || '', r.linkedinUrl || ''] }; })
+    .concat(feReady().map(function (r) { return { p: r, row: [r.brandName, feCatName(feCat(r)), feWhy(r.group), r.first || r.name, r.last, r.title || '', r.email, r.domain || '', r.linkedinUrl || ''] }; }))
+    .concat((d.domains || []).filter(feInCat).map(function (r) { return { p: r, row: [r.brandName, feCatName(feCat(r)), 'Nobody on file — find people with Domain Search', '', '', '', '', r.domain || '', ''] }; }));
+  var first = {};
+  rows.forEach(function (x, i) { if (first[x.p.brandId] == null) first[x.p.brandId] = i; });
+  return rows.map(function (x, i) { return { x: x, i: i }; }).sort(function (a, b) {
+    return feCatRank(feCat(a.x.p)) - feCatRank(feCat(b.x.p)) || first[a.x.p.brandId] - first[b.x.p.brandId] || a.i - b.i;
+  }).map(function (o) { return o.x.row; });
+}
+function feSheetBrands() {
+  var d = FE.data, seen = {};
+  if (!d) return 0;
+  feRows().concat(feReady(), (d.domains || []).filter(feInCat)).forEach(function (r) { seen[r.brandId] = 1; });
+  return Object.keys(seen).length;
+}
 function feFileName(kind, d) { return 'sb-' + kind + (FE.cat ? '-' + (FE.cat === '~' ? 'no-category' : FE.cat) : '') + '-' + d.today + '.csv'; }
 function feCsv(grid) {
   var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -20453,7 +20480,7 @@ function feSaveFile(name, text) {
   a.click();
   setTimeout(function () { a.remove(); URL.revokeObjectURL(url); }, 1500);
 }
-function feWhy(g) { return g === 'quiet' ? 'Accepted, then no response' : g === 'fresh' ? 'Not reached out to yet' : 'Didn’t accept'; }
+function feWhy(g) { return FE_WHY[g] || FE_WHY.noaccept; }
 function feReady() {
   return FE.data ? feByCat((FE.data.ready || []).filter(function (p) { return FE.on[p.group] && feInCat(p); })) : [];
 }
@@ -20512,7 +20539,7 @@ function feRender() {
   }).join('');
   top.innerHTML =
     '<div class="fe-h">' + title +
-      '<span class="fe-dim">People who didn’t answer on LinkedIn, and brands not reached out to yet. Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
+      '<span class="fe-dim">Every brand that hasn’t answered us, reached or not. Download the list, find their emails in Hunter, bring Hunter’s file back. Nothing is emailed from here.</span></div>' +
     '<div class="fe-grid">' +
       '<div class="su-tile"><div class="su-h">Need an email</div><div class="su-big" id="fe-need">' + rows.length + '<span>' + (rows.length === 1 ? ' person' : ' people') + '</span></div>' +
         '<div class="su-sub">at ' + plural(nb, 'brand') + ' we’re not talking to</div></div>' +
@@ -20526,7 +20553,8 @@ function feRender() {
     '</div>' +
     '<div class="fe-row">' +
       '<label class="fe-days fe-cat">Category <select class="inp" id="fe-cat">' + cats + '</select></label>' +
-      chip('noaccept', 'Didn’t accept') + chip('quiet', 'Accepted, then no response') + chip('fresh', 'Not reached out to yet') +
+      chip('noaccept', 'Didn’t accept') + chip('quiet', 'Accepted, then no response') + chip('working', 'On Zach’s list') +
+      chip('fresh', 'Not reached out to yet') + chip('held', 'Held back by the queue') +
       '<label class="fe-days">Invite sent at least <select class="inp" id="fe-days">' + days + '</select></label>' +
       '<label class="fe-days">Brands not reached yet: <select class="inp" id="fe-per">' + pers + '</select></label>' +
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
@@ -20536,6 +20564,7 @@ function feRender() {
       '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
       '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
     (tl.total ? '<div class="fe-tally" id="fe-tally"><b>' + (FE.cat ? esc(feCatName(FE.cat)) + ' — ' + plural(tl.total, 'brand') : 'All ' + plural(tl.total, 'brand')) + ':</b> ' + spots.join(' · ') + '.</div>' : '') +
+    (feSheetBrands() ? '<div class="fe-dim" id="fe-sheet"><button class="su-show" data-fe="sheet">Download every brand in one sheet (' + plural(feSheetBrands(), 'brand') + ')</button> — the people to look up, the ones with an email, and the brands with nobody, by category.</div>' : '') +
     (left.length ? '<div class="fe-dim" id="fe-left">People left out: ' + left.join(' · ') + '.</div>' : '') +
     (d.last ? '<div class="fe-last" id="fe-last">Last file: ' + plural(d.last.count, 'email') + ' saved ' + shortDate(d.last.at) + (d.last.by ? ' by ' + esc(d.last.by) : '') +
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
@@ -20701,7 +20730,7 @@ function feOnClick(e) {
     var rows = feRows();
     if (!rows.length) return;
     feSaveFile(feFileName('need-emails', d), feCsv([FE_HEAD].concat(rows.map(function (r) {
-      return [r.first, r.last, r.company, r.domain || '', r.brandName, feCatName(feCat(r)), r.title || '', r.linkedinUrl || '', r.contactId];
+      return [r.first, r.last, r.company, r.domain || '', r.brandName, feCatName(feCat(r)), feWhy(r.group), r.title || '', r.linkedinUrl || '', r.contactId];
     }))));
     toast('Downloaded ' + plural(rows.length, 'person', 'people') + ' — upload it in Hunter');
     return;
@@ -20717,6 +20746,13 @@ function feOnClick(e) {
     if (!lines.length) return;
     feSaveFile(feFileName('brand-websites', d), lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
     toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');
+    return;
+  }
+  if (a === 'sheet' && d) {
+    var sheet = feSheet();
+    if (!sheet.length) return;
+    feSaveFile(feFileName('every-brand', d), feCsv([['Brand', 'Category', 'Status', 'First name', 'Last name', 'Title', 'Email', 'Company website', 'LinkedIn']].concat(sheet)));
+    toast('Downloaded every brand in one sheet');
     return;
   }
   if (a === 'pick') { document.getElementById('fe-file').click(); return; }

@@ -1115,6 +1115,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`sb-need-emails-energy-<day>.csv`). "People left out" (names cut short, already emailed, past the brand's number) is
   the roster's, shown only without a category. Leo's first file also showed **146 of its 210 brands have no website on
   file** (Hunter goes by company name there) — not fixed; filling websites is the next lever for Hunter's hit rate.
+  **Every brand on the file** (Leo, the same day: "include all of them, i want every brand on the file"). On now, each
+  its own chip (`FE_GROUPS`, all on) and named in the file's **`SB status`** column (`FE_WHY` / `GROUP_WORDS`): **On
+  Zach's list** (`working` — a brand where someone accepted and is still being worked: its invited people and the one
+  who accepted; `needEmailList({ working: true })`) and **Held back by the queue** (`held` — not reached yet and a giant,
+  a Skip category or too small; `FreshBrand.group`). The card's wait starts at **any time** (`FE.minDays = 0`; the
+  server's default stays 21 for other callers). Still never on it — his own hard rules and his first words ("companies
+  that we're not in talks with"): replied / in talks / said no / asked us to stop, a deal / show / activation / Show
+  Board request, archived, do-not-email, not sold in the US, closed. A brand with nobody on file can't be on a people
+  file — it's on the websites file. **Download every brand in one sheet** (`feSheet`, `sb-every-brand-<day>.csv`, to
+  read — not for Hunter): the people to look up, the people with an email and a line per brand with nobody, by category.
+  The returned-file reader never takes one of our own `SB …` columns for Hunter's verdict or score (`theirs` in
+  `readFoundFile` — "SB status" was read as the verification column until the unit test caught it). Because people
+  mid-conversation on LinkedIn are now on the file, **don't send to the `On Zach's list` rows from Hunter** — the site's
+  own email machine already skips those brands.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from

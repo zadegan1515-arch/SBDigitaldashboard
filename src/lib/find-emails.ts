@@ -116,8 +116,17 @@ export type FindBrand = {
   id: string; name: string; category?: string | null; stage: string; out?: string | null
   archived?: boolean; doNotEmail?: boolean; people: FindPerson[]
 }
-export type FindGroup = 'noaccept' | 'quiet' | 'fresh'
-export const GROUP_WORDS: Record<FindGroup, string> = { noaccept: 'Didn’t accept', quiet: 'Accepted, then no response', fresh: 'Not reached out to yet' }
+// working / held (Leo, Nov 16 2026: "include all of them, i want every brand
+// on the file"): working = a brand where someone accepted and is still on
+// Zach's list — its people, the one who accepted too; held = a brand not
+// reached yet that the queue's rules hold back (a giant, a Skip category, too
+// small). Each is its own group, so the card can leave it out again and the
+// file says which is which ("SB status").
+export type FindGroup = 'noaccept' | 'quiet' | 'working' | 'fresh' | 'held'
+export const GROUP_WORDS: Record<FindGroup, string> = {
+  noaccept: 'Didn’t accept', quiet: 'Accepted, then no response', working: 'Someone accepted — on Zach’s list',
+  fresh: 'Not reached out to yet', held: 'Not reached out to yet — held back by the queue',
+}
 
 // Invited (or emailed) with no answer → didn't accept; accepted and quiet
 // after the last follow-up → no response. Anyone else isn't on the list.
@@ -150,7 +159,7 @@ export type FindRow = {
   brandId: string; brandName: string; category: string | null; group: FindGroup; lastAt: string | null; by: string | null
 }
 export type FindCounts = {
-  need: number; needBrands: number; noaccept: number; quiet: number; fresh: number
+  need: number; needBrands: number; noaccept: number; quiet: number; working: number; fresh: number; held: number
   have: number; emailed: number; tooNew: number; noName: number; offBrands: number; waitingBrands: number
 }
 
@@ -186,27 +195,33 @@ export function tallySpots(rows: Array<{ category?: string | null; spot: BrandSp
 // need = no email on file, a name Hunter can look up, old enough.
 // have = an email is on file and nobody has emailed them yet.
 // spots = where each of these brands stands (BrandSpot).
-export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now?: Date } = {}): { need: FindRow[]; have: FindRow[]; counts: FindCounts; spots: Record<string, BrandSpot> } {
+// working: true also lists the brands where someone accepted and is still on
+// Zach's list (group 'working') — without it they wait, as they did.
+export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now?: Date; working?: boolean } = {}): { need: FindRow[]; have: FindRow[]; counts: FindCounts; spots: Record<string, BrandSpot> } {
   const now = opts.now ?? new Date()
   const minDays = Math.max(0, opts.minDays ?? FIND_MIN_DAYS)
   const cutoff = now.getTime() - minDays * 864e5
   const need: FindRow[] = [], have: FindRow[] = []
-  const c: FindCounts = { need: 0, needBrands: 0, noaccept: 0, quiet: 0, fresh: 0, have: 0, emailed: 0, tooNew: 0, noName: 0, offBrands: 0, waitingBrands: 0 }
+  const c: FindCounts = { need: 0, needBrands: 0, noaccept: 0, quiet: 0, working: 0, fresh: 0, held: 0, have: 0, emailed: 0, tooNew: 0, noName: 0, offBrands: 0, waitingBrands: 0 }
   const seen = new Set<string>()
   const needBrands = new Set<string>()
   const spots: Record<string, BrandSpot> = {}
   for (const b of brands) {
     const where = brandIn(b)
-    const mine = (b.people ?? []).filter(p => personGroup(p) && p.contactId)
-    if (where === 'waiting') { spots[b.id] = 'waiting'; if ((b.people ?? []).some(p => personGroup(p))) c.waitingBrands += 1; continue }
-    if (where === 'off') { spots[b.id] = 'off'; if (mine.length) c.offBrands += 1; continue }
-    if (where !== 'in') { spots[b.id] = 'talking'; continue }
+    const working = where === 'waiting' && !!opts.working
+    const mine = (b.people ?? []).filter(p => (personGroup(p) || (working && p.stage === 'accepted')) && p.contactId)
+    if (where === 'waiting') {
+      if ((b.people ?? []).some(p => personGroup(p))) c.waitingBrands += 1
+      if (!working) { spots[b.id] = 'waiting'; continue }
+    } else if (where === 'off') { spots[b.id] = 'off'; if (mine.length) c.offBrands += 1; continue }
+    else if (where !== 'in') { spots[b.id] = 'talking'; continue }
     const n = { need: 0, have: 0, tooNew: 0, emailed: 0 }
     for (const p of mine) {
       const id = String(p.contactId)
       if (seen.has(id)) continue
       seen.add(id)
-      const group = personGroup(p) as FindGroup
+      const own = personGroup(p)
+      const group: FindGroup = working ? 'working' : (own as FindGroup)
       const nm = splitName(p.name)
       const row: FindRow = {
         contactId: id, name: String(p.name ?? '').trim(), first: nm?.first ?? '', last: nm?.last ?? '',
@@ -219,7 +234,7 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
         continue
       }
       // An invite still out and younger than the wait may yet be accepted.
-      const fresh = group === 'noaccept' && p.label !== 'invite withdrawn' && !!p.lastAt && new Date(p.lastAt).getTime() > cutoff
+      const fresh = own === 'noaccept' && p.label !== 'invite withdrawn' && !!p.lastAt && new Date(p.lastAt).getTime() > cutoff
       if (fresh) { c.tooNew += 1; n.tooNew += 1; continue }
       if (!nm) { c.noName += 1; continue }
       need.push(row)
@@ -227,7 +242,7 @@ export function needEmailList(brands: FindBrand[], opts: { minDays?: number; now
       n.need += 1
       needBrands.add(b.id)
     }
-    spots[b.id] = n.need ? 'list' : n.have ? 'ready' : n.tooNew ? 'tooNew' : n.emailed ? 'emailed' : 'other'
+    spots[b.id] = n.need ? 'list' : n.have ? 'ready' : n.tooNew ? 'tooNew' : n.emailed ? 'emailed' : working ? 'waiting' : 'other'
   }
   c.need = need.length
   c.needBrands = needBrands.size
@@ -248,7 +263,8 @@ export type FreshPerson = {
   contactId: string; name?: string | null; title?: string | null; linkedinUrl?: string | null; email?: string | null
   stopped?: boolean; flagged?: boolean; rank?: number; decisionMaker?: boolean
 }
-export type FreshBrand = { id: string; name: string; category?: string | null; people: FreshPerson[] }
+// group: 'held' for a brand the queue's rules hold back (else 'fresh').
+export type FreshBrand = { id: string; name: string; category?: string | null; group?: FindGroup; people: FreshPerson[] }
 export type FreshCounts = {
   fresh: number; freshBrands: number; freshHave: number
   freshMore: number          // people past the brand's number — not looked up
@@ -299,7 +315,7 @@ export function freshList(brands: FreshBrand[], opts: { perBrand?: number; skip?
       const row: FindRow = {
         contactId: p.contactId, name: String(p.name ?? '').trim(), first: nm?.first ?? '', last: nm?.last ?? '',
         title: p.title ?? null, linkedinUrl: p.linkedinUrl ?? null, email,
-        brandId: b.id, brandName: b.name, category: b.category ?? null, group: 'fresh', lastAt: null, by: null,
+        brandId: b.id, brandName: b.name, category: b.category ?? null, group: b.group ?? 'fresh', lastAt: null, by: null,
       }
       if (email) { have.push(row); c.freshHave += 1 } else { need.push(row); c.fresh += 1; any = true }
     }
@@ -361,10 +377,11 @@ export const toCsv = (grid: unknown[][]) => grid.map(r => r.map(csvCell).join(',
 // adds its own, so "SB id" comes back with each address.
 // "SB category" = the brand's category, so the list stays split by category
 // in Hunter too (catName: its words — the page's CAT_NAMES).
-export const HUNTER_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB title', 'SB LinkedIn', 'SB id']
+// "SB status" = why they're on it (GROUP_WORDS).
+export const HUNTER_HEAD = ['First name', 'Last name', 'Company', 'Company website', 'SB brand', 'SB category', 'SB status', 'SB title', 'SB LinkedIn', 'SB id']
 export type HunterRow = FindRow & { company: string; domain: string | null }
 export function hunterCsv(rows: HunterRow[], catName: (key: string | null) => string = k => k ?? ''): string {
-  return toCsv([HUNTER_HEAD, ...rows.map(r => [r.first, r.last, r.company, r.domain ?? '', r.brandName, catName(r.category), r.title ?? '', r.linkedinUrl ?? '', r.contactId])])
+  return toCsv([HUNTER_HEAD, ...rows.map(r => [r.first, r.last, r.company, r.domain ?? '', r.brandName, catName(r.category), GROUP_WORDS[r.group] ?? '', r.title ?? '', r.linkedinUrl ?? '', r.contactId])])
 }
 
 export type FoundRow = {
@@ -396,10 +413,13 @@ export function readFoundFile(text: string): FoundFile {
   if (iEmail < 0) hits.forEach((n, i) => { if (n > 0 && (iEmail < 0 || n > hits[iEmail])) iEmail = i })
   if (iEmail < 0) return { ...none, total: body.length, error: 'No email addresses in that file. Choose the file Hunter gave back, not the one you uploaded to it.' }
   const iId = col(k => k === 'sbid')
-  let iStatus = col(k => /verif/.test(k))
-  if (iStatus < 0) iStatus = col(k => /status/.test(k))
-  if (iStatus < 0) iStatus = col(k => /deliverab|result/.test(k))
-  const iScore = col(k => /score|confidence/.test(k))
+  // Never one of our own columns ("SB status" says why someone is on the
+  // list — it is not Hunter's verdict on the address).
+  const theirs = (k: string) => !k.startsWith('sb')
+  let iStatus = col(k => theirs(k) && /verif/.test(k))
+  if (iStatus < 0) iStatus = col(k => theirs(k) && /status/.test(k))
+  if (iStatus < 0) iStatus = col(k => theirs(k) && /deliverab|result/.test(k))
+  const iScore = col(k => theirs(k) && /score|confidence/.test(k))
   const iFirst = col(k => k === 'firstname' || k === 'first')
   const iLast = col(k => k === 'lastname' || k === 'last')
   const iName = col(k => k === 'fullname' || k === 'name')
