@@ -1690,6 +1690,25 @@
   .fe-skip{margin-top:10px;font-size:13.5px;color:var(--ink-2)}
   .fe-skip summary{cursor:pointer}
   .fe-skip li{margin:3px 0 3px 18px}
+  /* Instantly's card (ins*) — the Hunter card's pieces, plus these. */
+  .ins-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+  @media (max-width:1100px){.ins-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (max-width:640px){.ins-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .ins-tiles .su-big{font-size:26px}
+  .ins-tiles .su-sub{margin-bottom:0}
+  .ins-go .su-big{color:var(--good)}
+  .ins-line{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;font-size:13.5px;color:var(--ink-2);margin:10px 0 0}
+  .ins-line select{padding:5px 8px;font-size:13.5px;width:auto;max-width:100%}
+  .ins-line b{color:var(--ink-1)}
+  .ins-pill{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12.5px;font-weight:600;background:var(--surface-2);border:1px solid var(--border)}
+  .ins-pill.on{color:var(--good);border-color:var(--good)}
+  .ins-pill.off{color:var(--warn);border-color:var(--warn)}
+  .ins-need{font-size:14px;color:var(--ink-2);line-height:1.6;margin:4px 0 0}
+  .ins-need ol{margin:6px 0 0 20px;padding:0}
+  .ins-need li{margin:4px 0}
+  .ins-need code{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:6px;padding:1px 6px;font-size:13px;color:var(--ink-1)}
+  .ins-need a{color:var(--accent-hi)}
+  .ins-folds{display:flex;flex-direction:column;gap:6px;margin-top:12px}
   .su-fill{margin-top:8px;padding-top:8px;border-top:1px solid var(--border-soft)}
   .su-fill-h{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin-bottom:2px}
   .su-floor.inp{width:58px;height:28px;padding:2px 6px;font-size:13px;min-height:0}
@@ -2937,6 +2956,8 @@
       <h1>Email outreach</h1>
       <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
       <div id="fe-card"></div>
+      <!-- Cold email through Instantly (Leo, Nov 16 2026; ins*, src/lib/instantly.ts) -->
+      <div id="ins-card"></div>
       <div id="email-box" style="margin-top:18px"></div>
     </section>
 
@@ -20456,6 +20477,8 @@ function feRender() {
       ' · <button class="su-show" data-fe="undo">Undo</button></div>' : '');
   feRenderList();
   feRenderPv();
+  // Instantly's card counts "Ready to send" from this list.
+  if (document.getElementById('ins-top') && INS.data) insRender();
 }
 
 function feRenderList() {
@@ -20645,6 +20668,326 @@ function feOnChange(e) {
 }
 
 
+// ── Cold email through Instantly ───────────────────────────────────────────
+// Leo, Nov 16 2026: "get the emails from Hunter, connect that to Instantly, and
+// run cold outreach through Instantly … build it connected". The card under
+// the Hunter one (INS / ins*, rules in src/lib/instantly.ts). The dashboard
+// sends nothing: Review & send lists everyone with an address who hasn't
+// been emailed (the Hunter card's "Already have an email"), ticked or not;
+// Send hands the ticked ones to the chosen Instantly campaign, and Instantly
+// emails them. What it did comes back here (sent, replied, bounced,
+// unsubscribed) — live through its webhook, and by the sync. Anyone who
+// stops or answers on the dashboard is taken back out of Instantly.
+var INS = { data: null, err: '', pv: null, tick: {}, sending: false, stale: false, note: '', busy: '', syncing: false };
+var INS_KEYS_URL = 'https://app.instantly.ai/app/settings/integrations';
+var INS_SYNC_EVERY = 10 * 60 * 1000;
+var INS_FOLDS = [['replied', 'Replied'], ['unsubscribed', 'Unsubscribed'], ['bounced', 'Bounced'], ['removed', 'Taken out']];
+
+function insShell() {
+  var box = document.getElementById('ins-card');
+  if (!box || box.firstChild) return box;
+  box.innerHTML = '<div class="panel fe-card ins-card"><div id="ins-top"></div><div id="ins-pv"></div><div id="ins-people"></div></div>';
+  box.addEventListener('click', insOnClick);
+  box.addEventListener('change', insOnChange);
+  insRender();
+  return box;
+}
+
+function insLoad(noSync) {
+  if (!insShell()) return Promise.resolve();
+  return api('instantlyStatus', { live: true }).then(function (d) {
+    if (!d || !d.counts) throw new Error('no answer');
+    INS.data = d; INS.err = '';
+    insRender();
+    if (!noSync) insAutoSync();
+  }).catch(function (e) {
+    INS.err = e.message || 'Request failed';
+    insRender();
+  });
+}
+
+// Opening the tab reads what Instantly did since (at most every ten minutes
+// a browser) — the same sync the daily cron runs.
+function insAutoSync() {
+  var d = INS.data;
+  if (!d || !d.connected || d.error || INS.syncing || !(d.counts.total > 0)) return;
+  var last = 0;
+  try { last = Number(localStorage.getItem('sb.insSync')) || 0; } catch (e) {}
+  if (Date.now() - last < INS_SYNC_EVERY) return;
+  insSync(true);
+}
+function insSync(quiet) {
+  if (INS.syncing) return Promise.resolve();
+  INS.syncing = true; insRender();
+  return api('instantlySync').then(function (r) {
+    INS.syncing = false;
+    try { localStorage.setItem('sb.insSync', String(Date.now())); } catch (e) {}
+    if (!quiet) toast(r.ok === false ? (r.error || 'The sync didn’t finish') : insSyncWords(r));
+    return Promise.all([insLoad(true), feLoad()]);
+  }).catch(function (e) {
+    INS.syncing = false; insRender();
+    if (!quiet) toast(e.message || 'Couldn’t sync');
+  });
+}
+function insSyncWords(r) {
+  var bits = [
+    r.sent ? plural(r.sent, 'email') + ' sent' : '', r.replies ? plural(r.replies, 'reply', 'replies') : '',
+    r.bounced ? r.bounced + ' bounced' : '', r.unsubscribed ? r.unsubscribed + ' unsubscribed' : '',
+    r.pulledBack ? plural(r.pulledBack, 'person', 'people') + ' taken back out' : ''
+  ].filter(Boolean);
+  return bits.length ? 'Synced — ' + bits.join(', ') : 'Synced — nothing new';
+}
+
+function insRender() {
+  var top = document.getElementById('ins-top');
+  if (!top) return;
+  var d = INS.data;
+  var title = '<b>Send them through Instantly</b>';
+  if (!d) {
+    top.innerHTML = '<div class="fe-h">' + title + '</div><div class="fe-dim">' +
+      (INS.err ? 'Couldn’t read it: ' + esc(INS.err) + ' <button class="su-show" data-ins="retry">Try again</button>' : 'Checking Instantly…') + '</div>';
+    insRenderPv(); insRenderPeople();
+    return;
+  }
+  if (!d.connected) {
+    top.innerHTML = '<div class="fe-h">' + title + '<span class="fe-dim">Not connected yet. Nothing is sent from the dashboard — Instantly does the sending.</span></div>' +
+      '<div class="ins-need" id="ins-need"><b>To connect it:</b><ol>' +
+        '<li>In Instantly: <a href="' + INS_KEYS_URL + '" target="_blank" rel="noopener">Settings → Integrations → API Keys ↗</a> → <b>Create API Key</b>. Tick these scopes: ' +
+          d.scopes.map(function (x) { return '<code>' + esc(x) + '</code>'; }).join(' ') + '</li>' +
+        '<li>In Vercel: the project’s <b>Settings → Environment Variables</b> → add <code>' + esc(d.keyName) + '</code> and paste the key there (never in a chat) → <b>Redeploy</b>.</li>' +
+        '<li>Come back to this tab — it will show your campaigns.</li>' +
+      '</ol></div>';
+    insRenderPv(); insRenderPeople();
+    return;
+  }
+  var c = d.counts;
+  var ready = FE.data && FE.data.ready ? FE.data.ready.length : null;
+  var camp = d.campaign;
+  var opts = (d.campaigns || []).map(function (x) {
+    return '<option value="' + esc(x.id) + '"' + (d.chosen && d.chosen.id === x.id ? ' selected' : '') + '>' + esc(x.name) + ' · ' + esc(x.statusWord) + '</option>';
+  }).join('');
+  var campLine;
+  if (d.error) {
+    campLine = '<div class="fe-warn" id="ins-err">' + esc(d.error) + ' <button class="su-show" data-ins="retry">Try again</button></div>';
+  } else if (!d.campaigns || !d.campaigns.length) {
+    campLine = '<div class="ins-line" id="ins-camp">No campaign in Instantly yet — make one there (write its emails, attach the inbox), then <button class="su-show" data-ins="retry">check again</button></div>';
+  } else {
+    campLine = '<div class="ins-line" id="ins-camp"><span>They go to</span>' +
+      '<select class="inp" id="ins-pick"' + (INS.busy ? ' disabled' : '') + ' aria-label="Instantly campaign">' +
+        (d.chosen && camp ? '' : '<option value="">Pick a campaign…</option>') + opts + '</select>' +
+      (camp ? '<span class="ins-pill ' + (camp.sends ? 'on' : 'off') + '">' + esc(camp.statusWord) + '</span>' +
+        '<span class="fe-dim">' + (camp.sends ? 'Instantly emails whoever you send it, on its next sending slot.' : 'Nothing goes out until you start it in Instantly.') + '</span>' : '') +
+      (d.campaignGone ? '<span class="fe-warn">“' + esc(d.chosen.name) + '” isn’t in Instantly any more — pick another.</span>' : '') +
+    '</div>' +
+    (camp && camp.warn.length ? '<div class="fe-warn" id="ins-warn">' + camp.warn.map(esc).join(' · ') + '</div>' : '');
+  }
+  var tile = function (cls, h, n, sub, id) {
+    return '<div class="su-tile' + (cls ? ' ' + cls : '') + '"><div class="su-h">' + h + '</div><div class="su-big"' + (id ? ' id="' + id + '"' : '') + '>' + n + '</div><div class="su-sub">' + sub + '</div></div>';
+  };
+  var canSend = !!camp && !d.error && ready > 0;
+  var sync = d.sync;
+  var hook = d.hook || { on: false };
+  var hookLine = hook.on && hook.working !== false
+    ? '<span class="ins-pill on">Live updates on</span><button class="su-show" data-ins="hookoff">Turn off</button>'
+    : (hook.on ? '<span class="ins-pill off">Live updates stopped in Instantly</span>' : '<span class="ins-pill off">Live updates off</span>') +
+      '<button class="su-show" data-ins="hookon"' + (INS.busy ? ' disabled' : '') + '>Turn on</button>';
+  top.innerHTML =
+    '<div class="fe-h">' + title + '<span class="fe-dim">Hand people to your Instantly campaign; Instantly emails them. Nothing is sent from the dashboard.</span></div>' +
+    campLine +
+    '<div class="ins-tiles" style="margin-top:12px">' +
+      tile('ins-go', 'Ready to send', ready == null ? '…' : ready,
+        (canSend ? '<button class="btn-solid" data-ins="review"' + (INS.pv ? ' disabled' : '') + '>Review &amp; send…</button>'
+          : ready === 0 ? 'nobody waiting — bring a Hunter file back above' : !camp ? 'pick a campaign first' : 'have an email, never emailed'), 'ins-ready') +
+      tile('', 'In Instantly', c.waiting, 'not emailed yet', 'ins-waiting') +
+      tile('', 'Emailed', c.emailed, 'by Instantly so far', 'ins-emailed') +
+      tile('', 'Replied', c.replied, 'on the brand’s page too', 'ins-replied') +
+      tile('', 'Bounced', c.bounced, 'address didn’t work', 'ins-bounced') +
+      tile('', 'Unsubscribed', c.unsubscribed, 'never contacted again', 'ins-unsub') +
+    '</div>' +
+    (d.last ? '<div class="fe-last" id="ins-last">Last sent: ' + plural(d.last.count, 'person', 'people') + ' to “' + esc(d.last.campaignName) + '” ' + shortDate(d.last.at) +
+      (d.last.by ? ' by ' + esc(d.last.by) : '') +
+      (d.last.waiting ? ' · <button class="su-show" data-ins="undo">Undo (' + d.last.waiting + ' not emailed yet)</button>' : ' · all emailed') + '</div>' : '') +
+    '<div class="ins-line" id="ins-syncline">' + hookLine +
+      '<span class="fe-dim">' + (INS.syncing ? 'Reading what Instantly did…' : sync && sync.at ? 'Last read ' + shortDate(sync.at) + (sync.ok === false && sync.error ? ' — the last try failed: ' + esc(sync.error) : '') : 'Not read yet') + '</span>' +
+      '<button class="su-show" data-ins="sync"' + (INS.syncing ? ' disabled' : '') + '>↻ Sync now</button>' +
+      (c.removed ? '<span class="fe-dim">' + c.removed + ' taken back out</span>' : '') +
+    '</div>' +
+    (INS.note ? '<div class="fe-dim" id="ins-note" style="margin-top:8px">' + esc(INS.note) + '</div>' : '');
+  insRenderPv();
+  insRenderPeople();
+}
+
+// Everyone who'd go, before anyone does.
+function insRenderPv() {
+  var box = document.getElementById('ins-pv');
+  if (!box) return;
+  var p = INS.pv;
+  if (!p) { box.innerHTML = ''; return; }
+  var send = p.lines.filter(function (l) { return l.action === 'send'; });
+  var skip = p.lines.filter(function (l) { return l.action !== 'send'; });
+  var unticked = send.filter(function (l) { return !l.tick; }).length;
+  var camp = p.campaign;
+  box.innerHTML = '<div class="fe-pv">' +
+    '<div class="fe-pvh"><b>' + plural(send.length, 'person', 'people') + ' at ' + plural(p.counts.brands, 'brand') + ' could go</b>' +
+      (camp ? '<span class="fe-dim">to “' + esc(camp.name) + '” · ' + esc(camp.statusWord) + '</span>' : '') + '</div>' +
+    (INS.stale ? '<div class="fe-warn">Something changed since you looked — this is how it stands now. Check it and send again.</div>' : '') +
+    (camp ? '<div class="' + (camp.sends ? 'fe-warn' : 'fe-dim') + '" id="ins-when">' +
+      (camp.sends ? 'This campaign is running: Instantly starts emailing them on its next sending slot.' : 'This campaign is ' + esc(camp.statusWord.toLowerCase()) + ': nothing goes out until you start it in Instantly.') + '</div>' : '') +
+    (unticked ? '<div class="fe-warn">' + unticked + ' unticked — an address Hunter couldn’t verify, or a shared inbox like info@. Tick the ones you trust.</div>' : '') +
+    (send.length
+      ? '<div class="fe-tablewrap" data-scroll="ins-pv"><table class="fe-table"><thead><tr><th></th><th>Person</th><th>Brand</th><th>Email</th><th>The address</th></tr></thead><tbody>' +
+        send.map(function (l) {
+          return '<tr><td class="fe-tk"><input type="checkbox" data-instick="' + esc(l.targetId) + '"' + (INS.tick[l.targetId] ? ' checked' : '') + ' aria-label="Send ' + esc(l.name) + ' to Instantly"></td>' +
+            '<td>' + esc(l.name) + (l.title ? '<div class="fe-dim">' + esc(l.title) + '</div>' : '') + '</td><td>' + esc(l.brandName) + '</td><td>' + esc(l.email) + '</td>' +
+            '<td class="' + (l.tick ? 'fe-ok' : 'fe-maybe') + '">' + esc(l.why) + '</td></tr>';
+        }).join('') + '</tbody></table></div>'
+      : '<div class="fe-dim">Nobody to send.</div>') +
+    (skip.length
+      ? '<details class="fe-skip"><summary>' + skip.length + ' left out</summary><ul>' +
+          skip.map(function (l) { return '<li>' + esc(l.name) + ' · ' + esc(l.brandName) + ' <span class="fe-dim">' + esc(l.why) + '</span></li>'; }).join('') + '</ul></details>'
+      : '') +
+    '<div class="fe-foot">' +
+      '<button class="btn-solid" data-ins="send" id="ins-send"></button>' +
+      (unticked ? '<button class="su-show" data-ins="tickall">Tick all</button>' : '') +
+      '<button class="su-show" data-ins="ticknone">Untick all</button>' +
+      '<button class="btn-ghost" data-ins="cancel">Cancel</button>' +
+      '<span class="fe-dim">Only their name, title, company, website and email go to Instantly.</span>' +
+    '</div>' +
+  '</div>';
+  insSyncSend();
+}
+function insTicked() {
+  return INS.pv ? INS.pv.lines.filter(function (l) { return l.action === 'send' && INS.tick[l.targetId]; }).map(function (l) { return l.targetId; }) : [];
+}
+function insSyncSend() {
+  var b = document.getElementById('ins-send');
+  if (!b) return;
+  var n = insTicked().length;
+  b.textContent = INS.sending ? 'Sending…' : 'Send ' + plural(n, 'person', 'people') + ' to Instantly';
+  b.disabled = INS.sending || !n || !(INS.pv && INS.pv.campaign);
+}
+
+// Who replied, unsubscribed, bounced or was taken back out — a name opens
+// the brand page at them.
+function insRenderPeople() {
+  var box = document.getElementById('ins-people');
+  if (!box) return;
+  var d = INS.data;
+  if (!d || !d.connected || !d.people || !d.people.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="ins-folds">' + INS_FOLDS.map(function (f) {
+    var rows = d.people.filter(function (x) { return x.state === f[0]; });
+    if (!rows.length) return '';
+    return '<details class="fe-skip" data-insfold="' + f[0] + '"><summary>' + f[1] + ' · ' + d.counts[f[0]] + '</summary><ul>' +
+      rows.map(function (x) {
+        return '<li><button class="fe-link" data-brand="' + esc(x.brandId) + '" data-focus="' + esc(x.contactId) + '">' + esc(x.name) + '</button> · ' + esc(x.brandName) +
+          ' <span class="fe-dim">' + esc(x.email) + (x.at ? ' · ' + shortDate(x.at) : '') + (x.note ? ' · ' + esc(x.note) : '') + '</span></li>';
+      }).join('') + '</ul></details>';
+  }).join('') + '</div>';
+}
+
+function insPreview(fresh) {
+  return api('sendToInstantly', {}).then(function (p) {
+    INS.pv = p;
+    var tick = {};
+    p.lines.forEach(function (l) { if (l.action === 'send') tick[l.targetId] = fresh || INS.tick[l.targetId] == null ? l.tick : INS.tick[l.targetId]; });
+    INS.tick = tick;
+    insRender();
+  }).catch(function (e) { toast(e.message || 'Couldn’t list them'); });
+}
+function insSend() {
+  var ids = insTicked(), p = INS.pv;
+  if (!ids.length || INS.sending || !p || !p.campaign) return;
+  var ask = 'Send ' + plural(ids.length, 'person', 'people') + ' to “' + p.campaign.name + '” in Instantly?\n\n' +
+    (p.campaign.sends ? 'The campaign is running — Instantly starts emailing them on its next sending slot.'
+      : 'The campaign is ' + p.campaign.statusWord.toLowerCase() + ' — nothing goes out until you start it in Instantly.');
+  if (!confirm(ask)) return;
+  INS.sending = true; insSyncSend();
+  api('sendToInstantly', { ids: ids, confirm: true, expect: p.expect }).then(function (r) {
+    INS.sending = false;
+    if (r.stale) {
+      INS.stale = true; INS.pv = r;
+      var tick = {};
+      r.lines.forEach(function (l) { if (l.action === 'send') tick[l.targetId] = INS.tick[l.targetId] == null ? false : INS.tick[l.targetId]; });
+      INS.tick = tick;
+      insRender();
+      return;
+    }
+    INS.pv = null; INS.stale = false;
+    var extra = [
+      r.already && r.already.length ? plural(r.already.length, 'was', 'were') + ' already in an Instantly campaign' : '',
+      r.refused && r.refused.length ? r.refused.length + ' Instantly wouldn’t take (on its block list, or an address it rejects): ' +
+        r.refused.slice(0, 5).map(function (x) { return x.name; }).join(', ') + (r.refused.length > 5 ? '…' : '') : ''
+    ].filter(Boolean);
+    INS.note = 'Sent ' + plural(r.sent, 'person', 'people') + ' at ' + plural(r.brands, 'brand') + ' to “' + r.campaignName + '”' +
+      (r.sends ? '.' : ' — it’s ' + String(r.statusWord || '').toLowerCase() + ', so start it in Instantly when you’re ready.') +
+      (extra.length ? ' ' + extra.join(' · ') + '.' : '') +
+      (r.remaining != null ? ' ' + r.remaining + ' lead uploads left in your Instantly plan.' : '');
+    toast('Sent ' + plural(r.sent, 'person', 'people') + ' to Instantly');
+    return Promise.all([insLoad(true), feLoad()]);
+  }).catch(function (e) { INS.sending = false; insSyncSend(); toast(e.message || 'Couldn’t send'); });
+}
+// Undo the last send: who comes back out is named first.
+function insUndo() {
+  toast('Checking what Instantly did since…');
+  api('undoSendToInstantly').then(function (p) {
+    var names = p.goes.slice(0, 12).map(function (g) { return '• ' + g.name + ' (' + g.brandName + ')'; });
+    if (p.goes.length > 12) names.push('…and ' + (p.goes.length - 12) + ' more');
+    var keep = p.stays.length ? '\n\n' + plural(p.stays.length, 'person stays', 'people stay') + ' — already emailed or answered.' : '';
+    if (!p.goes.length) { toast('Nothing to take back — everyone from that send was emailed already'); return insLoad(true); }
+    if (!confirm('Take ' + plural(p.goes.length, 'person', 'people') + ' back out of “' + p.campaignName + '”? Instantly hasn’t emailed them yet.\n\n' + names.join('\n') + keep)) return;
+    return api('undoSendToInstantly', { confirm: true }).then(function (r) {
+      INS.note = 'Took ' + plural(r.removed, 'person', 'people') + ' back out of Instantly.';
+      toast('Took ' + plural(r.removed, 'person', 'people') + ' back out');
+      return Promise.all([insLoad(true), feLoad()]);
+    });
+  }).catch(function (e) { toast(e.message || 'Couldn’t undo'); });
+}
+function insHook(on) {
+  if (INS.busy) return;
+  if (!on && !confirm('Turn live updates off? The dashboard will only hear from Instantly at the daily sync, or when you press Sync now.')) return;
+  INS.busy = 'hook'; insRender();
+  api('setInstantlyHook', { on: on }).then(function (r) {
+    INS.busy = '';
+    toast(r.on ? 'Live updates on — Instantly tells the dashboard as things happen' : 'Live updates off');
+    return insLoad(true);
+  }).catch(function (e) { INS.busy = ''; insRender(); toast(e.message || 'Couldn’t change it'); });
+}
+
+function insOnClick(e) {
+  var t = e.target.closest('[data-ins], [data-brand]');
+  if (!t) return;
+  var a = t.getAttribute('data-ins');
+  if (!a) { loadBrand(t.getAttribute('data-brand'), t.getAttribute('data-focus') || null); return; }
+  if (a === 'retry') { insLoad(); return; }
+  if (a === 'review') { INS.stale = false; INS.note = ''; insPreview(true); return; }
+  if (a === 'send') { insSend(); return; }
+  if (a === 'cancel') { INS.pv = null; INS.stale = false; insRender(); return; }
+  if (a === 'tickall' || a === 'ticknone') {
+    INS.pv.lines.forEach(function (l) { if (l.action === 'send') INS.tick[l.targetId] = a === 'tickall'; });
+    insRenderPv();
+    return;
+  }
+  if (a === 'undo') { insUndo(); return; }
+  if (a === 'sync') { insSync(false); return; }
+  if (a === 'hookon') { insHook(true); return; }
+  if (a === 'hookoff') { insHook(false); return; }
+}
+function insOnChange(e) {
+  var t = e.target;
+  if (t.id === 'ins-pick') {
+    if (!t.value || INS.busy) return;
+    INS.busy = 'camp'; INS.pv = null;
+    api('setInstantlyCampaign', { campaignId: t.value }).then(function (r) {
+      INS.busy = '';
+      toast('People go to “' + r.campaign.name + '”');
+      return insLoad(true);
+    }).catch(function (err) { INS.busy = ''; insRender(); toast(err.message || 'Couldn’t pick that campaign'); });
+    return;
+  }
+  var id = t.getAttribute && t.getAttribute('data-instick');
+  if (id) { INS.tick[id] = t.checked; insSyncSend(); }
+}
+
 // The Email tab — its own view, fully separate from the LinkedIn queue.
 // Draft cards opened by hand (by id): a change to To / CC or Suggest
 // angle refreshes the tab, and the draft stays open under the cursor.
@@ -20655,6 +20998,7 @@ function loadEmailOutreach() {
   var box = document.getElementById('email-box');
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
   feLoad();
+  insLoad();
   return renderEmailMode(box, again);
 }
 

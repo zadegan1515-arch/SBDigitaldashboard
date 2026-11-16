@@ -15,6 +15,10 @@ import { draftDailyEmails, checkReplies } from '@/lib/email'
 import { syncNotionDeals } from '@/lib/notion'
 import { scanOps } from '@/lib/ops'
 import { refreshShows } from '@/lib/shows'
+import { PrismaClient } from '@prisma/client'
+import { syncInstantly } from '@/lib/instantly-db'
+
+const prisma = new PrismaClient()
 
 export const maxDuration = 60
 
@@ -43,7 +47,11 @@ export async function GET(req: NextRequest) {
     const ops = await scanOps({ max: 150 }).catch((e: any) => ({ error: String(e?.message ?? e) }))
     // Daily re-read of the CRM sheet for the Shows tab + sponsor page.
     const shows = await refreshShows().catch((e: any) => ({ error: String(e?.message ?? e) }))
-    return NextResponse.json({ ok: true, drafted, replies, notion, ops, shows: { ok: (shows as any).ok, count: (shows as any).count, error: (shows as any).error } })
+    // Instantly: what it sent and heard since yesterday, and anyone who must
+    // come back out (the net under its webhook). Reads and takes out only —
+    // nobody is ever handed to Instantly from here. A no-op without a key.
+    const instantly = await syncInstantly(prisma, { budgetMs: 15000 }).catch((e: any) => ({ error: String(e?.message ?? e) }))
+    return NextResponse.json({ ok: true, drafted, replies, notion, ops, shows: { ok: (shows as any).ok, count: (shows as any).count, error: (shows as any).error }, instantly })
   } catch (err: any) {
     return NextResponse.json({ ok: false, error: err?.message ?? 'cron failed' }, { status: 500 })
   }

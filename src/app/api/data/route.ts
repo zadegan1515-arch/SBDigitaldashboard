@@ -10,6 +10,7 @@
 // wrong field name builds clean here and fails on Vercel.
 
 import '@/lib/bigint-json'
+import { randomBytes } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma, PrismaClient, TargetStatus } from '@prisma/client'
 import {
@@ -55,6 +56,16 @@ import {
   needEmailList, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
   cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FOUND_LAST_KEY, type FoundContact, type HunterRow,
 } from '@/lib/find-emails'
+import {
+  planPush, leadFor, campaignView, batchId, isActive as instantlyActive, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
+  CAMPAIGN_KEY as INSTANTLY_CAMPAIGN_KEY, SYNC_KEY as INSTANTLY_SYNC_KEY, PUSH_LAST_KEY as INSTANTLY_PUSH_KEY, PUSH_MAX as INSTANTLY_PUSH_MAX,
+  STATE_WORDS as INSTANTLY_STATE_WORDS, type PushPerson,
+} from '@/lib/instantly'
+import { instantlyKeySet, listCampaigns as instantlyCampaigns, getCampaign as instantlyCampaign, listWebhooks as instantlyWebhooks } from '@/lib/instantly-api'
+import {
+  chosenCampaign, hookInfo, lastPush, pushLeads, syncInstantly, pullBack as instantlyPullBack, undoPush as instantlyUndoPush, setHook as instantlySetHook,
+  readJson as readInstantlyJson, writeJson as writeInstantlyJson, type ChosenCampaign,
+} from '@/lib/instantly-db'
 import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
@@ -5093,6 +5104,36 @@ async function setAsideMarked(tx: any, contactIds: string[], at: Date): Promise<
   return live.length
 }
 const twinWords = (twins: StopTwin[]) => twins.map(c => c.name + (c.brand?.name ? ' (' + c.brand.name + ')' : ''))
+
+// An unsubscribe in Instantly marks the person "doesn't want to continue" the
+// moment it arrives (instantly-db.ts applyEvent — the webhook can't reach the
+// code here). This finishes that stop the way stopContact does: their other
+// copies marked with the same time, their waiting rows set aside, on the
+// stop's record — so its Undo takes all of it back.
+async function finishInstantlyStops(): Promise<number> {
+  const rows = await prisma.instantlyLead.findMany({
+    where: { state: 'unsubscribed', twinsAt: null },
+    select: { id: true, target: { select: { id: true, handDeclinedAt: true, contact: { select: { id: true, brandId: true, name: true, linkedinUrl: true, email: true } } } } },
+    take: 200,
+  })
+  let marked = 0
+  for (const r of rows) {
+    const at = r.target.handDeclinedAt
+    if (at) {
+      const twins = await stopTwins(prisma, r.target.contact)
+      if (twins.length) {
+        await prisma.$transaction(async tx => {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${PERSON_STOP_KEY}))::text`
+          const pe = await stopTwinsApply(tx, twins, at, 'Instantly', [])
+          if (pe.twins.length || pe.shelved.length) await changePersonLog(tx, log => { log[r.target.id] = pe })
+          marked += pe.twins.length
+        }, { maxWait: 10000, timeout: 20000 })
+      }
+    }
+    await prisma.instantlyLead.update({ where: { id: r.id }, data: { twinsAt: new Date() } })
+  }
+  return marked
+}
 
 // People a stop set aside, back — only those still exactly as it left them
 // (set aside on purpose, never contacted); anyone else is named. `write`
@@ -15651,9 +15692,16 @@ const handlers: Record<string, Handler> = {
     const people = list.need.map(withCo)
     let last: any = null
     try { last = lastRow ? JSON.parse(lastRow.value) : null } catch { last = null }
+    // Handed to Instantly and not emailed yet: no longer "ready" — they're on
+    // its card (once it emails them they count as emailed, like anyone).
+    const handed = new Set((list.have.length ? await prisma.instantlyLead.findMany({
+      where: { target: { contactId: { in: list.have.map(r => r.contactId) } } }, select: { target: { select: { contactId: true } } },
+    }) : []).map(r => r.target.contactId))
+    const ready = list.have.filter(r => !handed.has(r.contactId))
     return {
-      minDays: days, today: localDayKey(now), counts: { ...list.counts, noDomain: people.filter(p => !p.domain).length },
-      people, ready: list.have.map(withCo),
+      minDays: days, today: localDayKey(now),
+      counts: { ...list.counts, have: ready.length, handed: list.have.length - ready.length, noDomain: people.filter(p => !p.domain).length },
+      people, ready: ready.map(withCo),
       last: last && Array.isArray(last.rows) && last.rows.length ? { at: last.at, by: last.by ?? null, count: last.rows.length } : null,
     }
   },
@@ -15779,6 +15827,182 @@ const handlers: Record<string, Handler> = {
       await tx.setting.delete({ where: { key: FOUND_LAST_KEY } })
     }, { maxWait: 10000, timeout: 55000 })
     return { applied: true, removed, ...summary }
+  },
+
+  // ── Instantly (Leo, Nov 16 2026) ────────────────────────────────────────
+  // "get the emails from Hunter, connect that to Instantly, and run cold
+  // outreach through Instantly … build it connected". Outreach → Email's
+  // second card. Rules pure in src/lib/instantly.ts, calls in instantly-api.ts,
+  // the database side in instantly-db.ts (shared with the webhook and the
+  // daily cron). The dashboard never sends: a signed-in person hands people
+  // to an Instantly campaign (every one named first), Instantly emails them,
+  // and what happened comes back — an email sent, a reply (the brand's page,
+  // In talks, Zach's list), a bounce, an unsubscribe (doesn't want to
+  // continue). Anyone who stops, answers on LinkedIn or is archived here is
+  // taken back out of Instantly.
+  //
+  // What the card shows. `live` also asks Instantly (its campaigns, whether
+  // the webhook is still on) — one read, never a write.
+  async instantlyStatus({ live = false }: any = {}) {
+    const connected = instantlyKeySet()
+    const [chosen, hook, sync, last, byState, rows] = await Promise.all([
+      chosenCampaign(prisma), hookInfo(prisma), readInstantlyJson<any>(prisma, INSTANTLY_SYNC_KEY, null), lastPush(prisma),
+      prisma.instantlyLead.groupBy({ by: ['state'], _count: { _all: true } }),
+      prisma.instantlyLead.findMany({
+        where: { state: { in: ['replied', 'bounced', 'unsubscribed', 'removed'] } },
+        orderBy: { updatedAt: 'desc' }, take: 80,
+        select: {
+          state: true, email: true, note: true, repliedAt: true, endedAt: true,
+          target: { select: { brandId: true, contactId: true, contact: { select: { name: true, title: true } }, brand: { select: { name: true } } } },
+        },
+      }),
+    ])
+    const counts: Record<string, number> = { waiting: 0, sent: 0, replied: 0, bounced: 0, unsubscribed: 0, done: 0, removed: 0, total: 0, emailed: 0 }
+    for (const g of byState) { counts[g.state] = (counts[g.state] ?? 0) + g._count._all; counts.total += g._count._all }
+    // Emailed = everyone Instantly has written to, wherever they stand now.
+    counts.emailed = await prisma.instantlyLead.count({ where: { sentAt: { not: null } } })
+    const people = rows.map(r => ({
+      state: r.state, stateWord: (INSTANTLY_STATE_WORDS as Record<string, string>)[r.state] ?? r.state, email: r.email, note: r.note,
+      at: (r.repliedAt ?? r.endedAt)?.toISOString() ?? null,
+      name: r.target.contact.name, title: r.target.contact.title, brandId: r.target.brandId, brandName: r.target.brand.name, contactId: r.target.contactId,
+    }))
+    const waitingInLast = last ? await prisma.instantlyLead.count({ where: { batch: last.batch, state: 'waiting' } }) : 0
+    let campaigns: ReturnType<typeof campaignView>[] | null = null
+    let campaign: ReturnType<typeof campaignView> | null = null
+    let error: string | null = null, campaignGone = false
+    let hookState: { on: boolean; at: string | null; working: boolean | null } = { on: !!hook, at: hook?.at ?? null, working: null }
+    if (connected && live) {
+      try {
+        campaigns = (await instantlyCampaigns()).map(campaignView)
+        campaign = chosen ? campaigns.find(c => c.id === chosen.id) ?? null : null
+        campaignGone = !!chosen && !campaign
+        if (hook) {
+          const mine = (await instantlyWebhooks()).find(w => w.id === hook.id)
+          // Gone, or switched off by Instantly after failed deliveries.
+          hookState = { on: !!mine, at: hook.at, working: mine ? Number(mine.status ?? 1) !== -1 : false }
+        }
+      } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
+    }
+    return {
+      connected, keyName: INSTANTLY_KEY_ENV, scopes: INSTANTLY_SCOPES,
+      chosen: chosen ? { id: chosen.id, name: chosen.name } : null, campaign, campaignGone, campaigns, error,
+      counts, people, hook: hookState, sync,
+      last: last ? { at: last.at, by: last.by, count: last.count, campaignName: last.campaignName, waiting: waitingInLast } : null,
+    }
+  },
+
+  // Which campaign people go to. Checked with Instantly first.
+  async setInstantlyCampaign({ campaignId, __user }: any) {
+    const id = String(campaignId || '').trim()
+    if (!id) throw new Error('Pick a campaign')
+    const c = campaignView(await instantlyCampaign(id))
+    const value: ChosenCampaign = { id: c.id, name: c.name, at: new Date().toISOString(), by: talksBy(__user) }
+    await writeInstantlyJson(prisma, INSTANTLY_CAMPAIGN_KEY, value)
+    return { campaign: c }
+  },
+
+  // Hand people to the chosen campaign. Without confirm: everyone who could
+  // go, each with where their address came from, ticked or not (rule 6) —
+  // the ready list of the card above (an email on file, never emailed, at a
+  // brand nobody answered from), less anyone stopped. confirm + the ticked
+  // row ids + the preview's `expect` (changed since → stale) sends them. Only
+  // a signed-in person can: never a key, never Claude's token, never a cron.
+  // Instantly emails them from there — if the campaign is running, from its
+  // next sending slot; the answer says which.
+  async sendToInstantly({ ids, confirm = false, expect, __user, __key }: any = {}) {
+    const list: any = await handlers.noAnswerList({ minDays: 0 })
+    const ready: Array<HunterRow & { contactId: string }> = list.ready
+    const cids = ready.map(r => r.contactId)
+    const [contacts, stops, chosen] = await Promise.all([
+      prisma.contact.findMany({
+        where: { id: { in: cids } },
+        select: {
+          id: true, name: true, notes: true, email: true, linkedinUrl: true, brandId: true, doNotContactAt: true,
+          brand: { select: { name: true, website: true, stoppedAt: true } },
+          targets: { select: { id: true, handDeclinedAt: true, instantly: { select: { id: true } } } },
+        },
+      }),
+      loadStopIndex(), chosenCampaign(prisma),
+    ])
+    const byId = new Map(contacts.map(c => [c.id, c]))
+    const people: PushPerson[] = []
+    const leads = new Map<string, ReturnType<typeof leadFor>>()
+    for (const r of ready) {
+      const c = byId.get(r.contactId)
+      if (!c) continue
+      const t = c.targets[0] ?? null
+      const hit = c.brand.stoppedAt ? null : stoppedMatch(stops, { brandId: c.brandId, name: c.name, linkedinUrl: c.linkedinUrl, email: c.email })
+      const stopped = c.brand.stoppedAt ? stopWords({ at: c.brand.stoppedAt }, c.brand.name)
+        : c.doNotContactAt || t?.handDeclinedAt ? stopWords({ name: c.name, at: c.doNotContactAt ?? t?.handDeclinedAt })
+        : hit ? stopWords({ name: hit.name, at: hit.at }) : null
+      people.push({
+        targetId: t?.id ?? null, contactId: c.id, name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, linkedinUrl: c.linkedinUrl,
+        notes: c.notes, brandId: c.brandId, brandName: c.brand.name, website: c.brand.website, domain: r.domain, group: r.group,
+        handed: !!t?.instantly, stopped,
+      })
+      if (t && c.email) leads.set(t.id, leadFor({ name: c.name, first: r.first, last: r.last, title: r.title, email: c.email, brandName: c.brand.name, website: c.brand.website, domain: r.domain, contactId: c.id }))
+    }
+    const plan = planPush(people)
+    let campaign: ReturnType<typeof campaignView> | null = null
+    let error: string | null = null
+    if (chosen && instantlyKeySet()) {
+      try { campaign = campaignView(await instantlyCampaign(chosen.id)) } catch (err: any) { error = String(err?.message ?? 'Couldn’t reach Instantly') }
+    }
+    const summary = { lines: plan.lines, counts: plan.counts, expect: plan.sig, campaign, connected: instantlyKeySet(), chosen: chosen ? { id: chosen.id, name: chosen.name } : null, error }
+    if (!confirm) return { preview: true, ...summary }
+    if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can send people to Instantly — open Outreach → Email and press Send there.')
+    if (!instantlyKeySet()) throw new Error('Instantly isn’t connected yet — ' + INSTANTLY_KEY_ENV + ' isn’t set in Vercel')
+    if (!chosen) throw new Error('Pick the Instantly campaign they go to first')
+    if (!campaign) throw new Error(error || 'That campaign isn’t in Instantly any more — pick another')
+    if (String(expect || '') !== plan.sig) return { applied: false, stale: true, ...summary }
+    const pick = new Set((Array.isArray(ids) ? ids : []).map(String))
+    const todo = plan.lines.filter(l => l.action === 'send' && l.targetId && pick.has(l.targetId))
+    if (!todo.length) throw new Error('Nobody is ticked to send')
+    if (todo.length > INSTANTLY_PUSH_MAX) throw new Error('That’s ' + todo.length + ' people — send at most ' + INSTANTLY_PUSH_MAX + ' at a time')
+    const now = new Date()
+    const batch = batchId(now)
+    const res = await pushLeads(prisma, {
+      campaignId: chosen.id, by: talksBy(__user), batch,
+      people: todo.map(l => ({ targetId: l.targetId as string, contactId: l.contactId, name: l.name, brandName: l.brandName, email: l.email, lead: leads.get(l.targetId as string)! })),
+    })
+    if (res.sent.length) {
+      await writeInstantlyJson(prisma, INSTANTLY_PUSH_KEY, { batch, at: now.toISOString(), by: talksBy(__user), campaignId: chosen.id, campaignName: campaign.name, count: res.sent.length })
+    }
+    return {
+      applied: true, sent: res.sent.length, brands: new Set(todo.filter(l => res.sent.some(x => x.targetId === l.targetId)).map(l => l.brandId)).size,
+      already: res.already, refused: res.refused, remaining: res.remaining, campaignName: campaign.name, sends: campaign.sends, statusWord: campaign.statusWord,
+    }
+  },
+
+  // The last Send, taken back: whoever Instantly hasn't emailed yet comes
+  // out of the campaign and is ready to send again. Without confirm it reads
+  // what Instantly did since and names who comes back and who stays (rule 6).
+  async undoSendToInstantly({ confirm = false, __user, __key }: any = {}) {
+    if (!confirm) {
+      await syncInstantly(prisma, { budgetMs: 12000 }).catch(() => null)
+      return instantlyUndoPush(prisma, false)
+    }
+    if (!__user || __user === 'CLI' || __key) throw new Error('Only someone signed in to the dashboard can take people back out of Instantly.')
+    return instantlyUndoPush(prisma, true)
+  },
+
+  // Read what Instantly did since the last sync, take back out whoever
+  // shouldn't be emailed any more, and finish any unsubscribe's stop (the
+  // person's other copies). The daily cron runs the same sync; the webhook
+  // brings most of it as it happens.
+  async instantlySync() {
+    const r = await syncInstantly(prisma, { budgetMs: 40000 })
+    const twins = await finishInstantlyStops()
+    return { ...r, twins }
+  },
+
+  // Live updates on or off: Instantly calls /api/instantly/webhook for every
+  // event, with a secret the dashboard makes here and never shows.
+  async setInstantlyHook({ on = true }: any = {}) {
+    const url = siteBase() + '/api/instantly/webhook'
+    const secret = randomBytes(32).toString('hex')
+    const r = await instantlySetHook(prisma, !!on, url, secret)
+    return { on: r.on }
   },
 
   // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────
@@ -18452,6 +18676,13 @@ export async function POST(req: NextRequest) {
     // (topCat: a Top category's brand opens with four). Kept a minute.
     await loadCategoryPriority()
     const data = await handler(a)
+    // Someone just said they don't want to continue: if they (or their brand)
+    // are in an Instantly campaign, they come out now, not at the next sync.
+    // Never holds up or fails the answer.
+    if (((fn === 'stopContact' && !a.preview) || (fn === 'handStep' && a.step === 'declined')) && instantlyKeySet()) {
+      const live = await prisma.instantlyLead.count({ where: { state: { in: ['waiting', 'sent'] } } }).catch(() => 0)
+      if (live) await instantlyPullBack(prisma).catch(() => {})
+    }
     // A change Claude made (the dashboard token): kept for Home → Claude's
     // day. Never holds up or fails the answer.
     if (a.__user === 'CLI') {

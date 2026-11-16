@@ -335,6 +335,8 @@ model Target {
   drafts Draft[]
   events TargetEvent[]
   emails EmailMessage[]
+  // Handed to Instantly for cold email (InstantlyLead below), or null.
+  instantly InstantlyLead?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -696,6 +698,13 @@ model EmailMessage {
   // "insert": a ready-made sentence they can drop into the email}.
   suggestion String?
 
+  // Null = the dashboard's own mailbox. "instantly" = Instantly sent it (or
+  // received the reply) and told us; externalId is Instantly's id for that
+  // email, so the same event arriving twice is one row. The dashboard's cap,
+  // drafts and follow-ups never count or continue an Instantly email.
+  via        String?
+  externalId String?
+
   sentAt    DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -703,6 +712,7 @@ model EmailMessage {
   @@index([targetId])
   @@index([status])
   @@index([direction])
+  @@index([externalId])
 }
 
 // ---------------------------------------------------------------
@@ -1270,4 +1280,57 @@ model RepOutreach {
   @@index([rep, status])
   @@index([rep, day])
   @@index([brandId])
+}
+
+// ---------------------------------------------------------------
+// Instantly — people handed over for cold email
+// ---------------------------------------------------------------
+//
+// Leo, Nov 16 2026: "get the emails from Hunter, connect that to Instantly,
+// and run cold outreach through Instantly … build it connected". One row per
+// outreach row handed to an Instantly campaign (Outreach → Email → Send to
+// Instantly — a signed-in click, never by itself). Instantly sends; what it
+// did since comes back by webhook and the daily sync (src/lib/instantly*.ts).
+// The row goes with the person's outreach row: a merge that keeps another
+// copy drops it, and the next sync adopts the lead again by its address.
+model InstantlyLead {
+  id       String @id @default(cuid())
+  targetId String @unique
+  target   Target @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // The address handed over (lowercase) and where it went.
+  email      String
+  campaignId String
+  // Instantly's own id for the lead (to take it back out).
+  leadId     String?
+
+  // waiting — handed over, nothing sent yet · sent · replied · bounced ·
+  // unsubscribed · done — the sequence finished with no answer ·
+  // removed — taken back out (the note says why).
+  state String  @default("waiting")
+  // Emails Instantly has sent them so far.
+  steps Int     @default(0)
+  note  String?
+
+  pushedAt DateTime @default(now())
+  pushedBy String?
+  // The Send it went in — its Undo takes back whoever wasn't emailed yet.
+  batch    String?
+
+  sentAt     DateTime?
+  lastSentAt DateTime?
+  repliedAt  DateTime?
+  endedAt    DateTime?
+  // An unsubscribe marks the person "doesn't want to continue" at once; their
+  // other copies are marked on the next sync from the dashboard (twinsAt).
+  twinsAt    DateTime?
+  syncedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([state])
+  @@index([email])
+  @@index([campaignId])
+  @@index([batch])
 }

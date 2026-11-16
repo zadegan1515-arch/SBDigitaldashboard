@@ -118,6 +118,8 @@ const MUST_BLOCK = [
   'disconnectGoogle', 'disconnectDrive', 'disconnectOps',
   // email
   'sendApprovedEmails', 'sendEmailDraft', 'sendTestEmail', 'sendReplyEmail', 'sendEventInvite', 'approveAllDrafts', 'setSendingPaused',
+  // Instantly (cold email) — its status read stays open
+  'sendToInstantly', 'undoSendToInstantly', 'setInstantlyCampaign', 'setInstantlyHook', 'instantlySync',
   // the ops mailbox
   'scanOps', 'listOps', 'getOpsItem', 'updateOpsItem', 'deleteOpsItem', 'replyOps', 'forwardOps', 'opsLinkOptions', 'getOpsStatus',
   // attendee records (rule 9)
@@ -132,7 +134,8 @@ t('what a key can never call — exactly this list, out of every handler', () =>
 })
 
 t('a handler added later with one of those names is closed from day one', () => {
-  for (const fn of ['sendSomethingNew', 'disconnectNotion', 'listAttendeeEmails', 'exportAttendees', 'rotateApiKey', 'archiveOps', 'setStaffPin']) assert.ok(K.keyBlocked(fn), fn)
+  for (const fn of ['sendSomethingNew', 'disconnectNotion', 'listAttendeeEmails', 'exportAttendees', 'rotateApiKey', 'archiveOps', 'setStaffPin', 'pauseInstantlyCampaign', 'instantlyRemove', 'takeFromInstantly']) assert.ok(K.keyBlocked(fn), fn)
+  assert.equal(K.keyBlocked('instantlyStatus'), null)
   for (const fn of ['createBrand', 'upsertContact', 'addBrandNote', 'getBrand', 'search', 'sentByDay', 'sentByCompany', 'audienceEventStats', 'segmentsOverview', 'sponsorReport', 'whoAmI', 'apiGuide', 'getMe']) assert.equal(K.keyBlocked(fn), null, fn)
 })
 
