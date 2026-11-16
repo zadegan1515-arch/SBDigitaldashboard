@@ -702,7 +702,7 @@ function nextOffWeekday(extras: ExtraDays, opts: { afterToday?: boolean } = {}):
 }
 
 // Not passed for today (wears off at midnight on its own — Off queue,
-// Take off today), and not inside a Pass's two weeks (passedUntil). One
+// Take off today), and not inside a Pass's month (passedUntil). One
 // OR (the four combinations), so it spreads next to a caller's AND.
 function notPassedToday() {
   const start = startOfLocalDay()
@@ -717,13 +717,15 @@ function notPassedToday() {
   }
 }
 // Leo, Oct 7 2026: "when i pass on a brand it should not show up in the
-// outreach tab again for at least two weeks".
-const PASS_DAYS = 14
+// outreach tab again for at least two weeks"; Nov 16 2026: "if i dont want a
+// brand can i pass them for a month" — a Pass is a month now (30 days). A
+// Pass given before keeps the day it was given (passedUntil is stored).
+const PASS_DAYS = 30
 function passedNow(b: { passedUntil?: Date | null }): boolean {
   return !!b.passedUntil && b.passedUntil.getTime() > Date.now()
 }
 // The same as a where-clause, for reads that judge "passed for today" per
-// day themselves (the Schedule's coming days): only the two weeks.
+// day themselves (the Schedule's coming days): only the Pass's month.
 function notOnPass(): Prisma.BrandWhereInput {
   return { OR: [{ passedUntil: null }, { passedUntil: { lte: new Date() } }] }
 }
@@ -1743,7 +1745,7 @@ async function carryBrands(unsent: Map<string, Unsent>, to: string, plan: Outrea
     const no = planRefusal(b, q, to)
     const u = unsent.get(b.id)!
     const on = pinnedOn.get(b.id) ?? null
-    // A Pass still running holds it out (two weeks), wherever it showed.
+    // A Pass still running holds it out (a month), wherever it showed.
     const passEnd = passedNow(b) ? localDayKey(b.passedUntil!) : null
     facts.set(b.id, {
       name: b.name,
@@ -2204,7 +2206,7 @@ async function planAddCore(plan: OutreachPlan, date: string, brandIds: unknown, 
   }
   const openedNow: string[] = []
   for (const { b, result } of addedBrands) {
-    // Planning it by hand ends a Pass's two weeks.
+    // Planning it by hand ends a Pass's month.
     if (b.passedUntil && !forToday) {
       await prisma.brand.update({ where: { id: b.id }, data: { passedUntil: null } })
       b.passedUntil = null
@@ -2441,7 +2443,7 @@ async function queuePlannedToday(planDay: PlanDay | null, opts: { dryRun?: boole
     if (!b) continue
     // "Pass today" wins over the plan for today: the Schedule card says
     // "Passed for today", so the queue must not stamp it straight back.
-    // Nor inside a Pass's two weeks: stamping goes through
+    // Nor inside a Pass's month: stamping goes through
     // queueBrandTargets, which ends a Pass (a hand add) — a pin the
     // morning roll made must never do that behind Leo's back.
     if ((b.passedTodayAt && b.passedTodayAt >= dayStart) || passedNow(b)) continue
@@ -3577,6 +3579,9 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || inConversation(b)
     if (hand && (off || handSpent(handAt.get(b.id)!, lastOutreachAt(b)))) { spent.push(b.id); continue }
     if (!hand && (off || isReached(b))) continue
+    // On a Pass ("not now", a month): off the list until it ends. One Leo
+    // added by hand keeps its place for after — it is not spent.
+    if (passedNow(b)) continue
     const f = planBrandFit(b, ctx.rates)
     const isToday = inToday(b)
     let auto = !isToday && bestFitEligible(b, f, ctx.q)
@@ -9565,7 +9570,7 @@ const handlers: Record<string, Handler> = {
       const no = await handGate(brand.id, !!allowGiant)
       if (no) return { queued: false, reason: no.reason, reasonText: no.text, brandId: brand.id, brandName: brand.name }
     }
-    // Queued on purpose: a Pass's two weeks are over. (The automatic
+    // Queued on purpose: a Pass's month is over. (The automatic
     // picks never reach a passed brand.)
     if (brand.passedUntil) {
       await prisma.brand.update({ where: { id: brand.id }, data: { passedUntil: null, passedTodayAt: null } })
@@ -9912,7 +9917,7 @@ const handlers: Record<string, Handler> = {
       // Schedule tab can offer Add / Pass on each before the day arrives.
       // Not coldPoolBrand(): "passed for today" wears off at midnight, so
       // it must not hold a brand out of TOMORROW's preview. It is applied
-      // per day below, to today only. A Pass's two weeks (notOnPass) hold
+      // per day below, to today only. A Pass's month (notOnPass) holds
       // it out of every day: shown on a later day, the morning roll used to
       // carry it in and the queue ended the Pass.
       // Only brands nobody reached out to before today, like the queue's
@@ -10580,7 +10585,7 @@ const handlers: Record<string, Handler> = {
       categories,
       // The queue rules (queue-rules.ts) for the Schedule's rule line and
       // its Giants switch.
-      queueRules: { giantsOn: q.giantsOn, giantsHeld, giantsOk: q.giantOk.size, restDays: REST_DAYS },
+      queueRules: { giantsOn: q.giantsOn, giantsHeld, giantsOk: q.giantOk.size, restDays: REST_DAYS, passDays: PASS_DAYS },
     }
   },
 
@@ -11606,8 +11611,15 @@ const handlers: Record<string, Handler> = {
         return r.state
       })
     }
+    // Putting it on the list by hand ends a Pass, as planning it does — a
+    // passed brand is off the list, so it would be added and not show.
+    const unpassed = brands.filter(b => ok.includes(b.id) && passedNow(b)).map(b => b.id)
+    if (unpassed.length) await prisma.brand.updateMany({ where: { id: { in: unpassed } }, data: { passedUntil: null, passedTodayAt: null } })
     const nameOf = new Map(brands.map(b => [b.id, b.name]))
-    return { ok: true, added: added.map(id => ({ id, name: nameOf.get(id) ?? '' })), already: ok.length - added.length, refused }
+    return {
+      ok: true, added: added.map(id => ({ id, name: nameOf.get(id) ?? '' })), already: ok.length - added.length, refused,
+      unpassed: unpassed.map(id => ({ id, name: nameOf.get(id) ?? '' })),
+    }
   },
 
   // Off the list, and the list never puts it back by itself. offDays: also
@@ -13571,7 +13583,7 @@ const handlers: Record<string, Handler> = {
   },
 
   // "Off queue" is company-wide (Leo) and for TODAY only (Leo, Oct 12
-  // 2026 — not the two-week Pass): the brand comes off today's plan, its
+  // 2026 — not the month's Pass): the brand comes off today's plan, its
   // unsent people go back to waiting (nothing shelved or deleted), and it
   // is passed for today, so neither the plan nor Best fit stamps it again
   // on the next load — it used to shelve them, and a planned brand came
@@ -13667,11 +13679,12 @@ const handlers: Record<string, Handler> = {
     })
   },
 
-  // Pass: keep a brand out of outreach without archiving it. Since Oct 7
-  // 2026 it is two weeks (PASS_DAYS), not a day: out of every automatic
-  // pick (Best fit, a category day's pool, the Schedule's days, the
-  // morning roll, Fill to 30, Plan my week, suggestions, Brands not
-  // reached yet) until then; a hand add clears it. on: false lifts it.
+  // Pass: keep a brand out of outreach without archiving it. Not a day:
+  // two weeks since Oct 7 2026, a month since Nov 16 2026 (PASS_DAYS) — out
+  // of every automatic pick (Best fit, a category day's pool, the
+  // Schedule's days, the morning roll, Fill to 30, Plan my week,
+  // suggestions, Brands not reached yet) and off the Week plan list until
+  // then; a hand add clears it. on: false lifts it.
   async passBrandToday({ brandId, on = true }: any) {
     const brand = await prisma.brand.update({
       where: { id: brandId },
@@ -13709,7 +13722,7 @@ const handlers: Record<string, Handler> = {
       })
       unqueued = r.count
     }
-    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, passedUntil: brand.passedUntil, unqueued }
+    return { id: brand.id, name: brand.name, passedToday: !!brand.passedTodayAt, passedUntil: brand.passedUntil, passDays: PASS_DAYS, unqueued }
   },
 
   // -------- follow-ups that nothing else surfaces --------
