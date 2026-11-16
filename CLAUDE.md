@@ -1464,6 +1464,19 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   dispatches own handlers only (`toString` = Unknown function). `DASHBOARD_TOKEN` is separate and unchanged. Tests:
   `node scripts/test-api-keys.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-api-keys.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-api-keys-e2e.js` (real middleware, sessions, keys).
+- **Claude's token by a paste box** (Leo, Nov 16 2026, after `DASHBOARD_TOKEN` changed in Vercel and every chat on the
+  Default environment was refused: "can u set it up so i only have to paste the key"). `/api/data` takes the dashboard
+  token as `Authorization: Bearer …` **or in its own header `X-Dashboard-Token`** (`DASH_HEADER` / `dashTokenOk` in
+  `src/lib/api-key-shape.ts`; middleware on `/api/data` only, then POST → `__user` 'CLI'; a key-shaped bearer beside it
+  is still checked as a key; same 24-character floor). So a Claude cloud environment can hold the key as a saved network
+  secret (the paste box a chat opens: host `sb-digitaldashboard.vercel.app`, header `X-Dashboard-Token`) and its proxy
+  adds it to every request — **never save it there under `Authorization`**: on that host it would replace the
+  `REPORT_TOKEN` bearer of the daily brand hunt and the LinkedIn run check. The proxy only sees requests that go through
+  it, so `scripts/cc.mjs` (re-runs itself) and the chat-log hook's sender (`sendEnv`) set `NODE_USE_ENV_PROXY=1` when
+  `HTTPS_PROXY` is set (Node 22.21+; nothing changes on Leo's Mac); `cc.mjs` no longer needs the variable in such a
+  session and says "turned the token away" instead of "HTTP 405" when the gate refuses it. A stale `DASHBOARD_TOKEN`
+  variable beside the saved key is harmless. Tests: `node scripts/test-api-keys.mjs`, `node scripts/test-chat-log-hook.mjs`,
+  `test-api-keys-e2e.js` (9).
 - **+ Add brand → Person** (Leo, Oct 12 2026: "sometimes we want to send the show board to individual people"):
   the Add box has a Brand / Person switch (`nbSetKind`, `NB_KIND`). A person = `Brand.kind = 'person'`
   (`createBrand({ kind: 'person', name, email, phone })` → `addPerson` in route.ts): archived + do-not-email from
@@ -1978,6 +1991,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 DATABASE_URL · NEXTAUTH_SECRET · GOOGLE_CLIENT_ID/SECRET (sign-in) · GMAIL_CLIENT_ID/SECRET (mail+drive+ops OAuth) ·
 EMAIL_SENDER_NAME=Zach · SITE_URL · ANTHROPIC_API_KEY (optional; avoid spend) · NOTION_* ·
 AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOKEN) · INGEST_TOKEN · CRON_SECRET ·
+DASHBOARD_TOKEN (Claude's sessions and scripts: `Authorization: Bearer` or `X-Dashboard-Token`; 24+ characters; change it in
+Vercel and every Claude environment needs the new one — a paste box, above) ·
 INSTANTLY_API_KEY (cold email through Instantly; unset = the card shows how to connect) ·
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1

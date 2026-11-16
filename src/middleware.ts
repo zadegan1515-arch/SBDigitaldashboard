@@ -9,6 +9,9 @@
 // <DASHBOARD_TOKEN>` so Claude Code / scripts on Leo's Mac can call the
 // same functions the UI uses (warmup status, ops scan, test sends…)
 // without a browser session. No token set in Vercel → no bearer access.
+// The same token is also taken from its own header, `X-Dashboard-Token`
+// (src/lib/api-key-shape.ts): a key saved in a Claude cloud environment's
+// settings is added there by the session's proxy, beside Authorization.
 //
 // And one more on the same path: a key made on Operations → Team
 // (`Bearer sbk_…`, src/lib/api-keys.ts). Middleware can't read the
@@ -19,7 +22,7 @@
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { bearerOf, isKeyShaped } from '@/lib/api-key-shape'
+import { bearerOf, isKeyShaped, dashTokenOk, DASH_HEADER } from '@/lib/api-key-shape'
 
 // The brand hostname (shows.sboyagency.com) only ever serves the sponsor
 // page and what it needs. Anything else on that host goes to the page.
@@ -35,6 +38,9 @@ const auth = withAuth({
       const expected = process.env.DASHBOARD_TOKEN
       const given = req.headers.get('authorization') ?? ''
       if (!!expected && expected.length >= 24 && given === `Bearer ${expected}`) return true
+      // The same token in its own header (X-Dashboard-Token): what a key
+      // saved in a Claude cloud environment's settings arrives as.
+      if (dashTokenOk(req.headers.get(DASH_HEADER), expected)) return true
       // Checked for real in /api/data (findKey) before anything runs.
       return isKeyShaped(bearerOf(given))
     },

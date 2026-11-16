@@ -20,7 +20,7 @@ import {
   candidatesToOffer, readRejected, rejectCandidates, resemblingCandidates,
 } from '@/lib/su-match'
 import { getServerSession } from 'next-auth'
-import { bearerOf, isKeyShaped } from '@/lib/api-key-shape'
+import { bearerOf, isKeyShaped, dashTokenOk, DASH_HEADER } from '@/lib/api-key-shape'
 import {
   activeKeys, cleanKeyName, findKey, keyBlocked, mintKey, noteKeyUse, pruneKeys, publicKey, readKeyLog, readKeys, updateKeys,
   MAX_ACTIVE_KEYS, type ApiKeyRow,
@@ -18774,6 +18774,10 @@ export async function POST(req: NextRequest) {
     } else {
       const bearer = bearerOf(req.headers.get('authorization'))
       const dash = process.env.DASHBOARD_TOKEN ?? ''
+      // Claude's token in its own header (DASH_HEADER — a key saved in a
+      // Claude cloud environment): Claude, whatever Authorization says,
+      // unless that carries a key — a key is always checked as a key.
+      const dashHeader = dashTokenOk(req.headers.get(DASH_HEADER), dash)
       if (isKeyShaped(bearer) && !(dash.length >= 24 && bearer === dash)) {
         key = findKey(await readKeys(prisma), bearer)
         if (!key) return NextResponse.json({ ok: false, error: 'That key isn’t valid — it was revoked, or it’s mistyped.' }, { status: 401 })
@@ -18781,8 +18785,8 @@ export async function POST(req: NextRequest) {
         if (no) return NextResponse.json({ ok: false, error: no }, { status: 403 })
         a.__user = key.name
         a.__key = { id: key.id, name: key.name, createdAt: key.createdAt }
-      } else if (bearer) {
-        a.__user = 'CLI'   // bearer-token caller (Claude Code / scripts), let through by middleware
+      } else if (bearer || dashHeader) {
+        a.__user = 'CLI'   // token caller (Claude Code / scripts), let through by middleware
       }
     }
     if (!handler) {
