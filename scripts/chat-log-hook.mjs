@@ -118,6 +118,15 @@ function token(env, cwd) {
   return null
 }
 
+// The sender's environment. In a Claude cloud session a key saved for the
+// dashboard in the environment's settings is added by the session's proxy —
+// to requests that go through it, which Node's fetch does only with
+// NODE_USE_ENV_PROXY=1 (Node 22.21+; ignored before). No proxy: as it was.
+export function sendEnv(env) {
+  if (!(env.HTTPS_PROXY || env.https_proxy) || env.NODE_USE_ENV_PROXY === '1') return env
+  return { ...env, NODE_USE_ENV_PROXY: '1', NODE_NO_WARNINGS: '1' }
+}
+
 async function send(file) {
   let job
   try { job = JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return }
@@ -155,7 +164,7 @@ async function main() {
   if (!token(process.env, input.cwd || process.cwd())) return
   const file = path.join(os.tmpdir(), 'sb-chatlog-' + process.pid + '-' + Date.now() + '.json')
   fs.writeFileSync(file, JSON.stringify({ input, cwd: input.cwd || process.cwd() }), { mode: 0o600 })
-  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--send', file], { detached: true, stdio: 'ignore', env: process.env })
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--send', file], { detached: true, stdio: 'ignore', env: sendEnv(process.env) })
   child.unref()
 }
 

@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { readTranscript, buildPost, promptText, PICTURE_ONLY } from './chat-log-hook.mjs'
+import { readTranscript, buildPost, promptText, PICTURE_ONLY, sendEnv } from './chat-log-hook.mjs'
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), 'chat-log-hook.mjs')
 let pass = 0, fail = 0
@@ -123,6 +123,15 @@ await new Promise(r2 => setTimeout(r2, 2500))
 is('nothing posted for either', got.length, before)
 is('no token anywhere in what it sent', JSON.stringify(got.map(g => g.body)).includes('test-token-not-real'), false)
 is('its temp files are gone', fs.readdirSync(os.tmpdir()).filter(f => f.startsWith('sb-chatlog-')).length, 0)
+
+// The sender goes through a Claude cloud session's proxy when there is one
+// (a key saved in the environment's settings is added there); else as it was.
+const plain = { PATH: '/bin' }
+is('no proxy: the environment as it is', sendEnv(plain), plain)
+is('a proxy: Node told to use it, quietly', sendEnv({ PATH: '/bin', HTTPS_PROXY: 'http://127.0.0.1:1' }), { PATH: '/bin', HTTPS_PROXY: 'http://127.0.0.1:1', NODE_USE_ENV_PROXY: '1', NODE_NO_WARNINGS: '1' })
+is('lower-case https_proxy too', sendEnv({ https_proxy: 'http://127.0.0.1:1' }).NODE_USE_ENV_PROXY, '1')
+const on = { HTTPS_PROXY: 'http://127.0.0.1:1', NODE_USE_ENV_PROXY: '1' }
+is('already on: untouched', sendEnv(on), on)
 
 server.close()
 fs.rmSync(dir, { recursive: true, force: true })

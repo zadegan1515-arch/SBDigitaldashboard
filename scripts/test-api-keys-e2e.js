@@ -25,14 +25,16 @@ const DASHBOARD_TOKEN = 'e2e-dashboard-token-0123456789abcdef';
 const SECRET = 'e2e-only-secret';
 const LEO = 'leo@sb.test', MIA = 'mia@sb.test';
 
-// who: { cookie } a signed-in person · { bearer } a key or Claude's token · {} nobody.
+// who: { cookie } a signed-in person · { bearer } a key or Claude's token ·
+// { dash } Claude's token in its own header (X-Dashboard-Token) · {} nobody.
 const call = async (fn, args, who) => {
   const w = who || {};
   const r = await fetch(BASE + '/api/data', {
     method: 'POST', redirect: 'manual',
     headers: Object.assign({ 'Content-Type': 'application/json' },
       w.cookie ? { Cookie: 'next-auth.session-token=' + w.cookie } : {},
-      w.bearer ? { Authorization: 'Bearer ' + w.bearer } : {}),
+      w.bearer ? { Authorization: 'Bearer ' + w.bearer } : {},
+      w.dash ? { 'X-Dashboard-Token': w.dash } : {}),
     body: JSON.stringify({ fn, args: args || {} }),
   });
   const j = await r.json().catch(() => ({ ok: false, error: 'HTTP ' + r.status }));
@@ -220,6 +222,26 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const lt = await data('listTeam', {}, claude);
     assert.equal(lt.canManage, false); assert.equal(lt.keys, null);
     ok('Claude\'s own token works as before and sees no keys');
+
+    // 9. The same token in its own header (a key saved in a Claude cloud
+    // environment: its proxy adds X-Dashboard-Token beside Authorization).
+    assert.deepEqual(await data('whoAmI', {}, { dash: DASHBOARD_TOKEN }), await data('whoAmI', {}, claude), 'the header alone = Claude');
+    assert.equal((await data('whoAmI', {}, { dash: DASHBOARD_TOKEN, bearer: 'an-old-token-that-is-no-longer-right' })).name, 'Claude', 'beside a stale Authorization');
+    r = await call('whoAmI', {}, { dash: DASHBOARD_TOKEN + 'x' });
+    assert.ok([302, 307, 401].includes(r.status), 'a wrong value is turned away at the gate (' + r.status + ')');
+    r = await call('createBrand', { name: 'Header Cola' }, { dash: 'short' });
+    assert.ok([302, 307, 401].includes(r.status));
+    // A key beside it is still checked as a key: a made-up one opens nothing.
+    await refused('whoAmI', {}, { dash: DASHBOARD_TOKEN, bearer: fake }, 401, /isn’t valid/);
+    // Other pages stay shut: the header opens /api/data only.
+    const shut = await fetch(BASE + '/app.html', { redirect: 'manual', headers: { 'X-Dashboard-Token': DASHBOARD_TOKEN } });
+    assert.ok([302, 307].includes(shut.status), 'the header doesn’t open the site (' + shut.status + ')');
+    // A change made this way is Claude's (Home → Claude's day), as with the bearer.
+    const acts = await prisma.claudeAction.count();
+    const hb = await data('createBrand', { name: 'Header Cola', category: 'beverage' }, { dash: DASHBOARD_TOKEN });
+    assert.ok(hb && (hb.id || hb.brand), 'a write goes through');
+    assert.equal(await prisma.claudeAction.count(), acts + 1, 'logged as a change Claude made');
+    ok('the dashboard token in its own header: Claude on /api/data only; wrong or short values refused; a key beside it is still a key');
 
     console.log('api keys e2e: ' + n + ' passed');
   } catch (e) {

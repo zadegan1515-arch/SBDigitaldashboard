@@ -213,6 +213,25 @@ await ta('a broken stored value shuts the door, and is never written over', asyn
   assert.deepEqual(await K.readKeys(down), [], 'database down = no keys')
 })
 
+// Claude's token in its own header (Leo, Nov 16 2026: a key saved in a Claude
+// cloud environment — pasted once — rides beside Authorization).
+t('the dashboard token in its own header: the same token, the same floor', () => {
+  const tok = 'a-dashboard-token-0123456789abcdef'
+  assert.equal(S.DASH_HEADER, 'x-dashboard-token')
+  assert.equal(S.dashTokenOk(tok, tok), true)
+  assert.equal(S.dashTokenOk(' ' + tok + '\n', tok), true, 'spaces around a pasted value')
+  assert.equal(S.dashTokenOk('Bearer ' + tok, tok), true, 'saved with the word Bearer in front')
+  for (const bad of [null, undefined, '', tok + 'x', tok.slice(1), 'sbk_' + 'A'.repeat(43)]) assert.equal(S.dashTokenOk(bad, tok), false, String(bad))
+  assert.equal(S.dashTokenOk('short', 'short'), false, 'a token under 24 characters opens nothing')
+  assert.equal(S.dashTokenOk('', ''), false)
+  assert.equal(S.dashTokenOk(undefined, undefined), false, 'no token set in Vercel: no access')
+  const mw = readFileSync('src/middleware.ts', 'utf8')
+  const gate = mw.slice(mw.indexOf("if (req.nextUrl.pathname !== '/api/data') return false"))
+  assert.ok(gate.indexOf('dashTokenOk(req.headers.get(DASH_HEADER), expected)') > 0, 'read on /api/data only — after the path check')
+  const post = route.slice(route.indexOf('export async function POST'))
+  assert.ok(post.indexOf('isKeyShaped(bearer) &&') < post.indexOf('bearer || dashHeader'), 'a key is still checked as a key first')
+})
+
 // The gate: middleware lets a key-shaped request through to /api/data only,
 // and /api/data checks it before anything runs.
 t('the gate checks a key before any function runs', () => {
