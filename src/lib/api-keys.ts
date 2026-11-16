@@ -166,6 +166,7 @@ const WHY = {
   access: 'Who and what gets access is decided by a signed-in person on the site — not with a key.',
   google: 'Google connections are managed by a signed-in person on the site — not with a key.',
   mail: 'A key never sends email.',
+  instantly: 'Instantly is run by a signed-in person on the site — a key never hands anyone to it or changes it.',
   ops: 'The operations mailbox isn’t open to keys.',
   attendees: 'Attendee records never leave the dashboard — a key gets event totals only (audienceEventStats, segmentsOverview).',
 } as const
@@ -181,6 +182,10 @@ const BLOCKED: Record<string, keyof typeof WHY> = {
   // Email (sending is off in code too — src/lib/no-send.ts).
   sendApprovedEmails: 'mail', sendEmailDraft: 'mail', sendTestEmail: 'mail', sendReplyEmail: 'mail',
   sendEventInvite: 'mail', approveAllDrafts: 'mail', setSendingPaused: 'mail',
+  // Instantly (cold email): who goes to it, which campaign, its webhook, the
+  // sync that takes people back out. instantlyStatus (a read) stays open.
+  sendToInstantly: 'instantly', undoSendToInstantly: 'instantly', setInstantlyCampaign: 'instantly', setInstantlyHook: 'instantly',
+  instantlySync: 'instantly',
   // The ops@ mailbox.
   scanOps: 'ops', listOps: 'ops', getOpsItem: 'ops', updateOpsItem: 'ops', deleteOpsItem: 'ops',
   replyOps: 'ops', forwardOps: 'ops', opsLinkOptions: 'ops', getOpsStatus: 'ops',
@@ -193,6 +198,7 @@ const BLOCKED: Record<string, keyof typeof WHY> = {
 const BLOCKED_SHAPES: Array<[RegExp, keyof typeof WHY]> = [
   [/ApiKey|TeamEmail|RepAccount/, 'access'],
   [/^disconnect[A-Z]/, 'google'],
+  [/Instantly(?:[A-Z]|$)|^instantly(?!Status$)/, 'instantly'],
   [/^send[A-Z]/, 'mail'],
   [/Ops(?:Item)?$/, 'ops'],
   [/Attendee|StaffPin/, 'attendees'],

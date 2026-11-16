@@ -9,13 +9,13 @@ If `../CLAUDE.md` (the SB Agency workspace file) exists it applies too. The rule
 4. **No Anthropic API spend** unless Leo explicitly approves it for a specific feature. Prefer rules/regex.
 5. **Claude does not move real money.** Payouts on the platform run only when a human clicks; PayPal stays sandbox unless Leo sets `PAYPAL_ENV=live`.
 6. **Never bulk-delete or overwrite data** without showing exactly what changes first.
-7. **No emails go out** (Leo, Oct 6 2026: "no emails should be sent out"). `EMAIL_SENDING_OFF = true` in `src/lib/no-send.ts` stops every send path at its last step (`deliver`, `sendViaGmail`, `opsSend`) — outreach, test/warmup, ops replies, Show Board access codes and team notifications. Drafting, Copy and Open in Gmail still work. Never flip it without Leo's explicit yes; `node scripts/test-no-send.mjs` fails if it's off or a send path skips the guard. (If Leo turns sending back on: the cap is in code — start 5/day, +8/week, ceiling 40; never raise it without him.)
+7. **No emails go out** (Leo, Oct 6 2026: "no emails should be sent out"). `EMAIL_SENDING_OFF = true` in `src/lib/no-send.ts` stops every send path at its last step (`deliver`, `sendViaGmail`, `opsSend`) — outreach, test/warmup, ops replies, Show Board access codes and team notifications. Drafting, Copy and Open in Gmail still work. Never flip it without Leo's explicit yes; `node scripts/test-no-send.mjs` fails if it's off or a send path skips the guard. (If Leo turns sending back on: the cap is in code — start 5/day, +8/week, ceiling 40; never raise it without him.) **Cold email runs through Instantly** (Leo, Nov 16 2026: "run cold outreach through Instantly … build it connected"): the site still sends nothing — a signed-in person hands people to an Instantly campaign from Outreach → Email (every one named first; never a key, Claude's token or a cron) and Instantly emails them. That hand-over is the one way an email now goes out because of the dashboard; never automate it.
 8. Ask clarifying questions when the request is ambiguous. When reporting back: **what you fixed, what Leo needs to give you** — short, with links. No long explanations. Anything Leo must do himself is a labeled **NEED** block: a bold one-line label, numbered steps, only the info required — nothing extra.
 9. **Attendee data (Audience module):** individual attendee records never leave the dashboard — sponsors and every public API get aggregates only. Email is identity: all attendee writes go through `normalizeEmail` in `src/lib/audience-core.ts`, guarded by `node scripts/test-audience.mjs`. Consent text is versioned (`ConsentText`); imports never claim consent the person didn't give. Deleting an attendee (the "remove my data" path) always shows what goes before it goes.
 
 ## Ways of working
 - Leo chose: **push straight to `main`**. Both hosts auto-deploy, so after every push **check the build went green** (Vercel dashboard or `vercel` CLI; Railway deployments tab) and re-check the live page.
-- Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC).
+- Vercel Hobby limits: **2 cron jobs, daily only**; 1 concurrent build. Don't add crons — fold new scheduled work into `/api/cron/email` (11:00 UTC) or `/api/cron/send` (15:00 UTC). (The Instantly sync rides on `/api/cron/email`.)
 - Prisma schema changes deploy themselves (`prisma db push` runs in the Vercel build — **production builds only**, `scripts/db-push.mjs`: previews share the production database, and on Oct 12 2026 a branch preview without `Brand.kind` dropped it and broke every brand page). The Vercel project's **Build Command** is set to the same rule (`prisma generate && if [ "$VERCEL_ENV" = "production" ]; then prisma db push --skip-generate; …; fi && next build`) so a branch that hasn't merged main can't undo it either. Still: additive changes only; never drop columns with data. A branch with a new column works in its preview only once main has it.
 - Test before pushing: `npm run build` (Next) / `npx tsc --noEmit`, and for `public/app.html` a Playwright smoke run with mocked `/api/data` (`NODE_PATH=$(npm root -g) node scripts/test-keep-place.js` is one).
 - Google OAuth: one Google Cloud client (`GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET`) serves three grants — outreach mailbox (`state=gmail`), Drive (`state=drive`), ops mailbox (`state=ops`). Scopes stay narrow: gmail.send + gmail.readonly, drive.file. Never request mail.google.com or modify/delete scopes.
@@ -1131,6 +1131,59 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   own email machine already skips those brands.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
+- **Outreach → Email: Send them through Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect
+  that to Instantly, and run cold outreach through Instantly", then "lets build it connected now"). The card under the
+  Hunter one (`#ins-card`, `INS` / `ins*` in app.html, `.ins-` CSS). Rules pure in `src/lib/instantly.ts`
+  (`node scripts/test-instantly.mjs`), the API calls in `src/lib/instantly-api.ts` (Instantly API v2,
+  developer.instantly.ai — read Nov 16 2026; Bearer `INSTANTLY_API_KEY`; `INSTANTLY_API_URL` points it at the tests' fake),
+  the database side in `src/lib/instantly-db.ts` (shared by /api/data, the webhook route and the cron). **The dashboard is
+  in the middle** — it's the one place that knows who said stop — and it never sends: Instantly does, from a campaign Leo
+  writes there. **Who can go** = the Hunter card's "Already have an email" (`noAnswerList.ready`: an address on file, never
+  emailed, at a brand nobody answered from or one not reached out to yet) less anyone already handed over
+  (`counts.handed`) or stopped. **Review & send…** = `sendToInstantly({ perBrand })` (a preview, rule 6: every person,
+  where the address came from — `emailSource` reads the line Hunter's file left in their notes — ticked unless Hunter
+  couldn't verify it, it's a shared inbox like info@, **or the brand isn't reached on LinkedIn yet** (group `fresh`: an
+  email makes the brand "reached", and the LinkedIn queue only picks brands nobody has reached — so those are Leo's to
+  tick, one by one or by the group's chip; the list says so). Lines are keyed by the person (`contactId`); someone with
+  no outreach row gets one at send (`Target` queued, next in line — `shelvedHow: 'cap'` — so a brand's number in the
+  LinkedIn queue doesn't move). 150 rows then Show all; a chip per group ticks or unticks it) →
+  **Send N people to Instantly** asks once more (the question says whether the campaign is running: Active = Instantly
+  emails them on its next slot; Draft / Paused = nothing until he starts it there) → `sendToInstantly({ ids, confirm,
+  expect, perBrand })` (ids = contact ids): **a signed-in person only** (refused for Claude's token and for keys — `keyBlocked` closes every Instantly
+  write, by name and by shape; `instantlyStatus` stays open), stale-checked, ≤ 1,000 a time, `POST /api/v2/leads/add` in
+  chunks of 200 with `skip_if_in_campaign` and an idempotency key. Instantly gets only `leadFor`'s fields (email, first /
+  last name, company, title, website, `custom_variables.sb_id` = our contact id). A row in table **`InstantlyLead`** (one
+  per outreach row, cascade; `state` waiting · sent · replied · bounced · unsubscribed · done · removed, `batch` = the
+  send it went in) is written only for a lead Instantly says it created; one already in a campaign there is taken on as
+  it stands (`already`), one on Instantly's block list is named (`refused`) and stays ready. **Undo** (`undoSendToInstantly`,
+  the last send; Setting `instantlyPushLast`): its preview syncs first, names who comes back (not emailed yet) and who
+  stays; confirm deletes those leads there and their rows here. **What comes back** (`applyEvent`): an email sent → an
+  `EmailMessage` out / sent on the person's row (`via: 'instantly'`, `externalId` = Instantly's id, kind intro then
+  followup — never followup2), so the tracker, the Reached tag, the brand page and the timeline read it like any email; a
+  reply → `recordReply` (email.ts, shared; what they wrote is kept) = status replied, the brand in In talks, the person on
+  Zach's list — never an auto-reply; a bounce → the row + a line in the person's notes (the address is left for Leo to
+  fix); **an unsubscribe → "doesn't want to continue", just them, at once** (`Target.handDeclinedAt` and
+  `Contact.doNotContactAt` with one time, so the stop's Undo clears it; their other copies are marked by
+  `finishInstantlyStops` in route.ts on the next sync from the dashboard, `twinsAt`). It arrives two ways: **live**
+  (`/api/instantly/webhook`, no sign-in: Instantly sends every event with the `x-sb-hook` secret the dashboard made when
+  Leo pressed **Turn on** — `setInstantlyHook`, Setting `instantlyHook`, never shown; a delivery without it is a 401; always
+  200 otherwise so Instantly doesn't switch it off) and **by the sync** (`syncInstantly`: the campaigns' sent / received
+  emails since the last good sync, then every lead's status; `instantlySync` = **↻ Sync now**, the tab opening — at most
+  every 10 min a browser, localStorage `sb.insSync` — and the daily `/api/cron/email`; Setting `instantlySync`; needs no
+  webhook, so it works on any plan with API access). **Who comes back out** (`pullBackWhy` → `pullBack`, at the end of
+  every sync, and at once after `stopContact` / `handStep` declined): a stop (them or their brand) → deleted from the
+  campaign **and** on Instantly's block list; accepted or answered on LinkedIn, a call booked, someone else at the brand
+  answered, the brand archived / do not email, their address changed → deleted there (`removed`, the note says why). A
+  lead Leo added in Instantly himself for someone on the dashboard is taken on by the sync (`batch` null) and only ever
+  taken out for a stop; one deleted there by hand reads "Deleted in Instantly". The dashboard's own email machine never
+  drafts or follows up for anyone handed over, and its cap and stats never count an Instantly email (`via: null` /
+  `instantly: { is: null }` in email.ts). `setInstantlyCampaign` = the menu (Setting `instantlyCampaign`); the card flags
+  campaign settings worth a look (`campaignView.warn`: stop on reply off, tracking on, no inbox, no email written, over 30
+  a day an inbox). Not connected, the card is the steps (the key's scopes: `KEY_SCOPES`). **Unverified against a real
+  Instantly account until Leo's first send** — built from its docs and tested against a fake that speaks its paths.
+  Tests: `node scripts/test-instantly.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-instantly.js` (page),
+  `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-instantly-e2e.js` (real handlers and webhook route,
+  a signed-in session, a fake Instantly).
 - **Brands → Stock take** (`brandStock` + `src/lib/stock.ts`; deep link `app.html#stock`; linked from
   Home → Categories) — the whole roster in one read, every brand in exactly one row. **Leo's lanes are
   real categories** (his yes, Sep 2026): `electrolytes`, `energy`, `rtd` (beer/seltzers/canned
@@ -1877,7 +1930,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - `src/lib/ops.ts` — Operations inbox: rules classifier (contract / invoice_payable / invoice_receivable / other), 90-day backfill scan, reply/forward as "SB Agency Operations".
 - `src/app/api/google/{start,callback}` — OAuth entry/return. `?drive=1`, `?ops=1` pick the grant.
 - `src/app/api/ops/attachment` — streams a Gmail attachment to a signed-in user.
-- `src/app/api/cron/email` (11:00 UTC: draft, replies, Notion sync, ops scan) · `src/app/api/cron/send` (15:00 UTC).
+- `src/app/api/cron/email` (11:00 UTC: draft, replies, Notion sync, ops scan, Instantly sync) · `src/app/api/cron/send` (15:00 UTC).
+- `src/app/api/instantly/webhook` — Instantly's events as they happen (secret header; Outreach → Email → Instantly above).
 - **Audience module (sponsorship Phase 1)** — `prisma`: Event / Attendee / Attendance (the join
   table — "same person, multiple events" is the product) / ConsentText. `src/lib/audience.ts` =
   server logic; `src/lib/audience-core.ts` = pure helpers (email normalization, CSV import mapping;
@@ -1898,6 +1952,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 DATABASE_URL · NEXTAUTH_SECRET · GOOGLE_CLIENT_ID/SECRET (sign-in) · GMAIL_CLIENT_ID/SECRET (mail+drive+ops OAuth) ·
 EMAIL_SENDER_NAME=Zach · SITE_URL · ANTHROPIC_API_KEY (optional; avoid spend) · NOTION_* ·
 AMBASSADOR_PLATFORM_URL · AMBASSADOR_PLATFORM_TOKEN (= platform INTEGRATION_TOKEN) · INGEST_TOKEN · CRON_SECRET ·
+INSTANTLY_API_KEY (cold email through Instantly; unset = the card shows how to connect) ·
 optional: SIGNATURE_LINKEDIN_URL, SIGNATURE_INSTAGRAM_URL, SIGNATURE_EMBED=1, SIGNATURE_ICONS=1, OPS_BACKFILL_DAYS,
 SPONSOR_HOST (brand page host), SPONSOR_REQUEST_TO (who gets sponsor requests), SPONSOR_GATE=1
 (turn the Show Board access-code gate on), SPONSOR_MASTER_CODE (team code that always opens the

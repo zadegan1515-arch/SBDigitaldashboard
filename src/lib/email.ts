@@ -84,7 +84,7 @@ export async function setSendingPaused(paused: boolean) {
   // Only reset when nothing has ever been sent, so a pause/unpause
   // mid-campaign doesn't knock the cap back to 5.
   if (!paused) {
-    const everSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', kind: { not: 'test' } } })
+    const everSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', via: null, kind: { not: 'test' } } })
     if (everSent === 0) await setSetting('emailRampStart', new Date().toISOString())
   }
   return { paused }
@@ -424,7 +424,7 @@ export async function draftDailyEmails(limit = 5) {
 
   const cap = await currentDailyCap()
   const sentToday = await prisma.emailMessage.count({
-    where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
+    where: { direction: 'out', status: 'sent', via: null, sentAt: { gte: startOfLocalDay() } },
   })
   const pendingDrafts = await prisma.emailMessage.count({
     where: { direction: 'out', status: { in: ['draft', 'approved'] } },
@@ -445,7 +445,9 @@ export async function draftDailyEmails(limit = 5) {
       // own note would be the second email in one conversation.
       status: { notIn: ['replied', 'converted', 'declined', 'dead', 'accepted'] },
       emailedAt: null,
-      emails: { some: { direction: 'out', kind: 'intro', status: 'sent', sentAt: { lte: cutoff1 } } },
+      // Handed to Instantly: its sequence does the following up (instantly.ts).
+      instantly: { is: null },
+      emails: { some: { direction: 'out', kind: 'intro', status: 'sent', via: null, sentAt: { lte: cutoff1 } } },
       // Nobody who said they don't want to continue, nor their brand.
       handDeclinedAt: null, contact: { doNotContactAt: null }, brand: { stoppedAt: null },
     },
@@ -513,10 +515,13 @@ export async function draftDailyEmails(limit = 5) {
       where: { OR: [{ status: { in: ['accepted', 'replied'] } }, { emailedAt: { not: null } }] },
       select: { brandId: true },
     })) emailedBrands.add(w.brandId)
+    // A brand with anyone handed to Instantly is being emailed from there.
+    for (const w of await prisma.instantlyLead.findMany({ select: { target: { select: { brandId: true } } } })) emailedBrands.add(w.target.brandId)
     const fresh = await prisma.target.findMany({
       where: {
         status: { in: ['queued', 'drafted', 'sent'] },
         shelved: false,
+        instantly: { is: null },
         contact: { email: { not: null }, doNotContactAt: null },
         handDeclinedAt: null,
         emails: { none: {} },
@@ -847,7 +852,7 @@ export async function sendApprovedEmails() {
 async function roomToday(): Promise<{ cap: number; sentToday: number; room: number }> {
   const cap = await currentDailyCap()
   const sentToday = await prisma.emailMessage.count({
-    where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
+    where: { direction: 'out', status: 'sent', via: null, sentAt: { gte: startOfLocalDay() } },
   })
   return { cap, sentToday, room: Math.max(0, cap - sentToday) }
 }
@@ -917,11 +922,14 @@ function replyMailbox(): { user: string; pass: string } | null {
 
 // Logs a single inbound reply against the target it belongs to.
 // Shared by both readers so the Gmail and IMAP paths can't drift.
-async function recordReply(targetId: string, from: string, subject: string | null, when: Date) {
+// `extra`: a reply another sender told us about (Instantly) — what they
+// wrote, who told us, and that sender's id for the email.
+export async function recordReply(targetId: string, from: string, subject: string | null, when: Date,
+  extra: { body?: string | null; via?: string | null; externalId?: string | null } = {}) {
   // One record per target per subject — a thread that gets several
   // messages shouldn't show up as several separate replies.
   const dupe = await prisma.emailMessage.findFirst({
-    where: { targetId, direction: 'in', subject },
+    where: { targetId, direction: 'in', OR: [{ subject }, ...(extra.externalId ? [{ externalId: extra.externalId }] : [])] },
   })
   if (dupe) return false
 
@@ -929,6 +937,7 @@ async function recordReply(targetId: string, from: string, subject: string | nul
     data: {
       targetId, direction: 'in', kind: 'reply', status: 'received',
       fromEmail: from, subject, sentAt: when,
+      body: extra.body ?? null, via: extra.via ?? null, externalId: extra.externalId ?? null,
     },
   })
 
@@ -936,10 +945,10 @@ async function recordReply(targetId: string, from: string, subject: string | nul
   if (t && !['replied', 'converted', 'declined', 'dead'].includes(t.status)) {
     await prisma.target.update({
       where: { id: targetId },
-      data: { status: 'replied', repliedAt: t.repliedAt ?? new Date() },
+      data: { status: 'replied', repliedAt: t.repliedAt ?? (extra.via ? when : new Date()) },
     })
     await prisma.targetEvent.create({
-      data: { targetId, kind: 'status', fromStatus: t.status, toStatus: 'replied', detail: 'email reply' },
+      data: { targetId, kind: 'status', fromStatus: t.status, toStatus: 'replied', detail: extra.via ? 'email reply (' + extra.via + ')' : 'email reply' },
     })
     await prisma.partner.upsert({
       where: { brandId: t.brandId },
@@ -1271,13 +1280,14 @@ export async function emailStatus() {
   if (mode === 'none') return { configured: false, paused, google }
   const cap = await currentDailyCap()
   const sentToday = await prisma.emailMessage.count({
-    where: { direction: 'out', status: 'sent', sentAt: { gte: startOfLocalDay() } },
+    where: { direction: 'out', status: 'sent', via: null, sentAt: { gte: startOfLocalDay() } },
   })
   const drafts = await prisma.emailMessage.count({ where: { direction: 'out', status: 'draft' } })
   const approved = await prisma.emailMessage.count({ where: { direction: 'out', status: 'approved' } })
-  const totalSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent' } })
-  const totalReplies = await prisma.emailMessage.count({ where: { direction: 'in' } })
-  const totalOpened = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', opens: { gt: 0 } } })
+  // The dashboard's own mailbox only — Instantly's emails are on its card.
+  const totalSent = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', via: null } })
+  const totalReplies = await prisma.emailMessage.count({ where: { direction: 'in', via: null } })
+  const totalOpened = await prisma.emailMessage.count({ where: { direction: 'out', status: 'sent', via: null, opens: { gt: 0 } } })
   return {
     configured: true, address, mode, paused, google,
     // Where replies are read from: the connected Google account when
