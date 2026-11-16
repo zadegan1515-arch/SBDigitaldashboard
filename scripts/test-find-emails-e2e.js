@@ -234,10 +234,14 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       ['Zed Zero', 'Nowhere', '', 'zed@nowhere.com', 'Verified'],
       // Hal's address is on file as "Hal.Has@ColdCo.com": the same address in any case is his.
       ['Kay Vodka', 'Ketel One', '', 'HAL.HAS@coldco.com', 'Verified'],
+      // Hunter's Leads export keeps none of our columns: the name is the first + last we sent ("Dr. Bo Chen, MBA" went as
+      // Bo Chen), and a label's company is the one it was sent as (Smirnoff went as Diageo).
+      ['Bo Chen', 'Cold Co', '', 'bo.other@coldco.com', 'Verified'],
+      ['Sam Spirit', 'Diageo', '', 'sam.spirit@diageo.com', 'Verified'],
     ]);
     const lp = await data('saveFoundEmails', { csv: loose })
     assert.equal(lp.cols.id, null)
-    assert.deepEqual(lp.lines.map(x => [x.contactId, x.action]), [['c_wd', 'save'], ['c_sam', 'save'], [null, 'unknown'], ['c_kay', 'taken']])
+    assert.deepEqual(lp.lines.map(x => [x.contactId, x.action]), [['c_wd', 'save'], ['c_sam', 'save'], [null, 'unknown'], ['c_kay', 'taken'], ['c_bo', 'has'], ['c_sam', 'twice']])
     assert.match(lp.lines[3].why, /Hal Has’s address at Cold Co/)
     ok('a file without the SB id column is matched by name and brand, else the profile link');
 

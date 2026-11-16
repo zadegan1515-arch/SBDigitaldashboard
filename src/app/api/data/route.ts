@@ -15818,8 +15818,15 @@ const handlers: Record<string, Handler> = {
       for (const r of [...f.list.need, ...f.list.have, ...f.fresh.need, ...f.fresh.have]) {
         const slug = linkedinSlug(r.linkedinUrl)
         if (slug && !bySlug.has(slug)) bySlug.set(slug, r.contactId)
-        const k = findPersonKey(r.name, r.brandName)
-        if (k && !byKey.has(k)) byKey.set(k, r.contactId)
+        // By the name on file and by the first + last name the list was sent
+        // with ("Dr. Ann Lee, MBA" went out as Ann Lee), under the brand's name
+        // and under the company it was sent as (a label goes by its parent's) —
+        // Hunter's Leads export keeps none of our own columns.
+        const sentAs = f.coOf(r.brandId, r.brandName).company
+        for (const nm of [r.name, [r.first, r.last].filter(Boolean).join(' ')]) for (const org of [r.brandName, sentAs]) {
+          const k = findPersonKey(nm, org)
+          if (k && !byKey.has(k)) byKey.set(k, r.contactId)
+        }
       }
     }
     const want = new Set<string>()

@@ -300,6 +300,16 @@ t('our own "SB status" column is never read as Hunter\'s verdict', () => {
   // No verdict column at all: ours still isn't one.
   assert.equal(readFoundFile(toCsv([[...HUNTER_HEAD, 'Email'], ['Ann', 'Lee', 'Alpha', '', 'Alpha', '', 'Didn’t accept', 'VP', '', 'c1', 'ann@alpha.com']])).cols.status, null)
 })
+t('Hunter\'s Leads export: the verdict is "Verification status" — never the date beside it or "Sending status"', () => {
+  const head = ['Full name', 'Email address', 'Company', 'Job title', 'Verification date', 'Sending status', 'Verification status', 'Confidence score']
+  const f = readFoundFile(toCsv([head, ['Ann Lee', 'ann@alpha.com', 'Alpha', '', '2026-11-16', 'Never contacted', 'valid', '97'], ['Bo Chen', '', 'Alpha', '', '', 'Never contacted', '', '']]))
+  assert.deepEqual(f.cols, { email: 'Email address', status: 'Verification status', score: 'Confidence score', id: null })
+  assert.deepEqual([f.rows.length, f.empty, f.rows[0].name, f.rows[0].company, f.rows[0].status], [1, 1, 'Ann Lee', 'Alpha', 'valid'])
+  // No verdict column at all: "Sending status" isn't one, so the lines aren't read as unverified.
+  const g = readFoundFile(toCsv([['Full name', 'Email address', 'Company', 'Sending status', 'Verification date'], ['Ann Lee', 'ann@alpha.com', 'Alpha', 'Never contacted', '2026-11-16']]))
+  assert.equal(g.cols.status, null)
+  assert.equal(verdictOf(g.rows[0].status, !!g.cols.status), 'unknown')
+})
 t('the wrong file says so', () => {
   assert.match(readFoundFile(hunterCsv([])).error, /no rows/)
   assert.match(readFoundFile(toCsv([HUNTER_HEAD, ['Ann', 'Lee', 'Alpha', 'alpha.com', 'Alpha', 'Energy Drinks', 'Didn’t accept', 'VP', '', 'c1']])).error, /No email addresses/)

@@ -416,9 +416,14 @@ export function readFoundFile(text: string): FoundFile {
   // Never one of our own columns ("SB status" says why someone is on the
   // list — it is not Hunter's verdict on the address).
   const theirs = (k: string) => !k.startsWith('sb')
-  let iStatus = col(k => theirs(k) && /verif/.test(k))
-  if (iStatus < 0) iStatus = col(k => theirs(k) && /status/.test(k))
-  if (iStatus < 0) iStatus = col(k => theirs(k) && /deliverab|result/.test(k))
+  // Hunter's Leads export has "Verification status", "Sending status" and
+  // "Verification date" side by side: the verdict is the first, never the
+  // date it was checked or whether the lead was contacted.
+  const notVerdict = (k: string) => /date|time|send|contact/.test(k)
+  let iStatus = col(k => theirs(k) && /verif/.test(k) && /status|result/.test(k))
+  if (iStatus < 0) iStatus = col(k => theirs(k) && /verif/.test(k) && !notVerdict(k))
+  if (iStatus < 0) iStatus = col(k => theirs(k) && /status/.test(k) && !notVerdict(k))
+  if (iStatus < 0) iStatus = col(k => theirs(k) && /deliverab|result/.test(k) && !notVerdict(k))
   const iScore = col(k => theirs(k) && /score|confidence/.test(k))
   const iFirst = col(k => k === 'firstname' || k === 'first')
   const iLast = col(k => k === 'lastname' || k === 'last')
