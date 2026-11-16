@@ -20610,6 +20610,18 @@ function feSheetBrands() {
   feRows().concat(feReady(), (d.domains || []).filter(feInCat)).forEach(function (r) { seen[r.brandId] = 1; });
   return Object.keys(seen).length;
 }
+// Every company still missing emails, once each: the brands on the people file (as the chips and the category
+// stand) and the brands with nobody on file — by category.
+function feCompanies() {
+  var d = FE.data, seen = {}, out = [];
+  if (!d) return out;
+  feRows().concat((d.domains || []).filter(feInCat)).forEach(function (r) {
+    if (seen[r.brandId]) return;
+    seen[r.brandId] = 1;
+    out.push({ brandId: r.brandId, brandName: r.brandName, category: r.category, domain: r.domain || null, company: r.company || r.brandName });
+  });
+  return feByCat(out);
+}
 function feFileName(kind, d) { return 'sb-' + kind + (FE.cat ? '-' + (FE.cat === '~' ? 'no-category' : FE.cat) : '') + '-' + d.today + '.csv'; }
 function feCsv(grid) {
   var cell = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
@@ -20649,9 +20661,13 @@ function feRender() {
     return;
   }
   var c = d.counts, rows = feRows(), have = feReady();
-  // The brands with nobody on file, and their lines in the file: labels of one parent company share a line.
-  var domBrands = (d.domains || []).filter(feInCat).length;
-  var doms = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+  // Domain Search (Leo, Nov 16 2026: "lets do the domain search" — about a credit a company, and more people at
+  // each): every company still missing emails — the ones on the people file and the ones with nobody on file —
+  // one line each; labels of one parent company share a line.
+  var cos = feCompanies();
+  var domBrands = cos.length, domNobody = (d.domains || []).filter(feInCat).length;
+  var doms = feDomainLines(cos);
+  var domNoSite = cos.filter(function (r) { return !r.domain; }).length;
   var tl = feTally();
   var cats = '<option value="">All categories</option>' + feCats().map(function (o) {
     return '<option value="' + esc(o.key) + '"' + (FE.cat === o.key ? ' selected' : '') + '>' + esc(feCatName(o.key)) + ' (' + o.n + ')</option>';
@@ -20705,9 +20721,11 @@ function feRender() {
       (rows.length ? '<button class="su-show" data-fe="more">' + (FE.more ? 'Hide the list' : 'See who’s on it') + '</button>' : '') +
     '</div>' +
     (noDom ? '<div class="fe-dim">' + noDom + ' of them ' + (noDom === 1 ? 'has' : 'have') + ' no company website on file — Hunter looks ' + (noDom === 1 ? 'that one' : 'those') + ' up by company name.</div>' : '') +
-    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>' + plural(domBrands, 'brand') + '</b> not reached yet ' + (domBrands === 1 ? 'has' : 'have') + ' nobody on file to look up. ' +
-      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows there. ' +
+    (doms.length ? '<div class="fe-doms" id="fe-doms"><b>Domain Search — ' + plural(domBrands, 'company', 'companies') + '</b> still missing emails' +
+      (domNobody ? ' (' + domNobody + ' with nobody on file)' : '') + '. ' +
+      '<button class="su-show" data-fe="domains">Download their websites (' + doms.length + ')</button> for Hunter’s <b>Bulks → Domain Search</b> — it lists who it knows at each. ' +
       (domBrands > doms.length ? (domBrands - doms.length) + (domBrands - doms.length === 1 ? ' shares' : ' share') + ' a line with a sister brand (one company, looked up once). ' : '') +
+      (domNoSite ? domNoSite + ' ' + (domNoSite === 1 ? 'has' : 'have') + ' no website on file and ' + (domNoSite === 1 ? 'goes' : 'go') + ' by name. ' : '') +
       '<a href="' + FE_DOMAINS + '" target="_blank" rel="noopener">Open it ↗</a></div>' : '') +
     (tl.total ? '<div class="fe-tally" id="fe-tally"><b>' + (FE.cat ? esc(feCatName(FE.cat)) + ' — ' + plural(tl.total, 'brand') : 'All ' + plural(tl.total, 'brand')) + ':</b> ' + spots.join(' · ') + '.</div>' : '') +
     (feSheetBrands() ? '<div class="fe-dim" id="fe-sheet"><button class="su-show" data-fe="sheet">Download every brand in one sheet (' + plural(feSheetBrands(), 'brand') + ')</button> — the people to look up, the ones with an email, and the brands with nobody, by category.</div>' : '') +
@@ -20888,7 +20906,7 @@ function feOnClick(e) {
     return;
   }
   if (a === 'domains' && d) {
-    var lines = feDomainLines(feByCat((d.domains || []).filter(feInCat)));
+    var lines = feDomainLines(feCompanies());
     if (!lines.length) return;
     feSaveFile(feFileName('brand-websites', d), lines.map(function (v) { return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join('\r\n') + '\r\n');
     toast('Downloaded ' + plural(lines.length, 'brand') + ' — upload it in Hunter’s Domain Search');

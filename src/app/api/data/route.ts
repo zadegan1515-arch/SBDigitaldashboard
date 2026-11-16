@@ -54,7 +54,7 @@ import { whyLeaveOut, parentOf, parentCompanyOf, findParent, parentBrandNames, L
 import { samePeopleGroups, pickKeeper, mergeFields, targetBeats, pairKey as personPairKey, personNameKey, linkedinSlug, type PersonRow, type MergeFields } from '@/lib/same-person'
 import {
   needEmailList, freshList, tallySpots, companyDomain, readFoundFile, planFoundEmails, findKey as findPersonKey, foundNote, addNote as addFoundNote, dropNote as dropFoundNote,
-  cleanEmail as cleanFoundEmail, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
+  cleanEmail as cleanFoundEmail, sigOf as findSig, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import {
   planPush, leadFor, campaignView, batchId, isActive as instantlyActive, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
@@ -3122,6 +3122,7 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
   return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size }
 }
 
+const WEBSITES_LAST_KEY = 'brandWebsitesLast'
 const DEAD_WEIGHT_KEY = 'deadWeightLast'
 // Archive dead weight's list: brands in play (not archived, not do-not-email)
 // that can never go out (supply.ts deadWeightOf), worst first.
@@ -16132,6 +16133,74 @@ const handlers: Record<string, Handler> = {
     const secret = randomBytes(32).toString('hex')
     const r = await instantlySetHook(prisma, !!on, url, secret)
     return { on: r.on }
+  },
+
+  // ── Websites, filled in bulk (Leo, Nov 16 2026: "lets do the domain search") ──
+  // Hunter's Domain Search needs a company's website, and most brands had none
+  // saved. rows = [{ brandId, website }] (a Claude session's web research, or a
+  // list typed by hand). Without confirm it only shows what would be saved,
+  // brand by brand (rule 6): only a brand whose website is still empty — never
+  // over one already there, never a social / marketplace link, never a brand
+  // that isn't on file. confirm + the preview's `expect` fills them in one
+  // transaction; Undo = undoBrandWebsites (the last list; a website changed
+  // since stays).
+  async saveBrandWebsites({ rows, confirm = false, expect, __user }: any = {}) {
+    const list = (Array.isArray(rows) ? rows : []).slice(0, 2000)
+    const ids = [...new Set(list.map((r: any) => String(r?.brandId ?? '')).filter(Boolean))]
+    const brands = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, website: true } }) : []
+    const byId = new Map(brands.map(b => [b.id, b]))
+    const NOT_A_SITE = /(^|\.)(instagram|facebook|tiktok|linkedin|twitter|x|youtube|amazon|linktr|wikipedia|crunchbase|shopify|myshopify|google)\.(com|ee|org)$/
+    const seen = new Set<string>()
+    const lines: Array<{ brandId: string; name: string; website: string; action: 'save' | 'has' | 'bad' | 'unknown' | 'twice'; why: string }> = []
+    for (const r of list) {
+      const id = String(r?.brandId ?? '')
+      const b = byId.get(id)
+      const domain = websiteDomain(String(r?.website ?? ''))
+      const base = { brandId: id, name: b?.name ?? String(r?.name ?? ''), website: domain ? 'https://' + domain : String(r?.website ?? '') }
+      if (!b) { lines.push({ ...base, action: 'unknown', why: 'Not a brand on the dashboard' }); continue }
+      if (seen.has(id)) { lines.push({ ...base, action: 'twice', why: 'In the list twice — the first is used' }); continue }
+      seen.add(id)
+      if (!domain || NOT_A_SITE.test(domain)) { lines.push({ ...base, action: 'bad', why: 'Not a company website' }); continue }
+      if (b.website && b.website.trim()) { lines.push({ ...base, action: 'has', why: 'Already has ' + b.website.trim() + ' — left as it is' }); continue }
+      lines.push({ ...base, action: 'save', why: '' })
+    }
+    const todo = lines.filter(l => l.action === 'save')
+    const sig = findSig(todo.map(l => l.brandId + ':' + l.website))
+    const counts = { save: todo.length, has: lines.filter(l => l.action === 'has').length, bad: lines.filter(l => l.action === 'bad').length, unknown: lines.filter(l => l.action === 'unknown').length, twice: lines.filter(l => l.action === 'twice').length }
+    if (!confirm) return { preview: true, lines, counts, expect: sig }
+    if (String(expect || '') !== sig) return { applied: false, stale: true, lines, counts, expect: sig }
+    if (!todo.length) throw new Error('Nothing to save — every brand on the list already has a website')
+    const now = new Date()
+    const saved: Array<{ brandId: string; name: string; website: string }> = []
+    await prisma.$transaction(async tx => {
+      for (const l of todo) {
+        // Only while it's still empty: a website typed in since stays.
+        const r = await tx.brand.updateMany({ where: { id: l.brandId, OR: [{ website: null }, { website: '' }] }, data: { website: l.website } })
+        if (r.count) saved.push({ brandId: l.brandId, name: l.name, website: l.website })
+      }
+      if (saved.length) {
+        const value = JSON.stringify({ at: now.toISOString(), by: talksBy(__user), rows: saved })
+        await tx.setting.upsert({ where: { key: WEBSITES_LAST_KEY }, create: { key: WEBSITES_LAST_KEY, value }, update: { value } })
+      }
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, saved: saved.length, skipped: todo.length - saved.length, counts }
+  },
+  async undoBrandWebsites({ confirm = false }: any = {}) {
+    const last = await readJsonSetting<{ at: string; by: string | null; rows: Array<{ brandId: string; name: string; website: string }> } | null>(prisma, WEBSITES_LAST_KEY, null)
+    const rows = last && Array.isArray(last.rows) ? last.rows : []
+    if (!rows.length) throw new Error('Nothing to undo — no websites were saved from a list.')
+    const now = await prisma.brand.findMany({ where: { id: { in: rows.map(r => r.brandId) } }, select: { id: true, website: true } })
+    const cur = new Map(now.map(b => [b.id, b.website]))
+    const goes = rows.filter(r => cur.get(r.brandId) === r.website)
+    const stays = rows.filter(r => cur.get(r.brandId) !== r.website).map(r => ({ name: r.name, why: cur.has(r.brandId) ? 'its website was changed since' : 'no longer on file' }))
+    const summary = { at: last!.at, by: last!.by ?? null, count: rows.length, goes: goes.map(g => ({ name: g.name, website: g.website })), stays }
+    if (!confirm) return { preview: true, ...summary }
+    let removed = 0
+    await prisma.$transaction(async tx => {
+      for (const g of goes) removed += (await tx.brand.updateMany({ where: { id: g.brandId, website: g.website }, data: { website: null } })).count
+      await tx.setting.delete({ where: { key: WEBSITES_LAST_KEY } })
+    }, { maxWait: 10000, timeout: 55000 })
+    return { applied: true, removed, ...summary }
   },
 
   // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────

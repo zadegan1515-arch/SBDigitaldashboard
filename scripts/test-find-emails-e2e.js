@@ -376,6 +376,38 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([fresh(fl.people), fresh(fl.ready)], [['f_e', 'f_lone'], ['f_has', 'f_p']])
     ok('their emails come back the same way: preview, ticked, saved — then they’re ready');
 
+    // ---- websites filled in bulk (for Hunter's Domain Search) ----
+    const sites = [
+      { brandId: 'b_bare', website: 'https://www.BareBars.com/shop' }, { brandId: 'b_quiet', website: 'quietco.com' },
+      { brandId: 'b_zest', website: 'other.com' }, { brandId: 'b_deal', website: 'https://instagram.com/dealco' },
+      { brandId: 'nope', website: 'x.co' }, { brandId: 'b_bare', website: 'barebars.co' },
+    ]
+    const wp = await data('saveBrandWebsites', { rows: sites })
+    assert.equal(wp.preview, true)
+    assert.deepEqual(wp.lines.map(l => l.action), ['save', 'save', 'has', 'bad', 'unknown', 'twice'])
+    assert.deepEqual([wp.lines[0].name, wp.lines[0].website], ['Bare Bars', 'https://barebars.com'])
+    assert.match(wp.lines[2].why, /Already has www\.zestsoda\.com\/about — left as it is/)
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_bare' } })).website, null, 'a preview writes nothing')
+    assert.equal((await data('saveBrandWebsites', { rows: sites, confirm: true, expect: '0.x' })).stale, true)
+    const ws = await data('saveBrandWebsites', { rows: sites, confirm: true, expect: wp.expect })
+    assert.deepEqual([ws.applied, ws.saved], [true, 2])
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_bare' } })).website, 'https://barebars.com')
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_zest' } })).website, 'www.zestsoda.com/about', 'never over a website already there')
+    // The Domain Search list reads it at once.
+    assert.equal((await data('noAnswerList')).domains.find(d => d.brandName === 'Bare Bars').domain, 'barebars.com')
+    const wa = await prisma.claudeAction.findMany({ where: { fn: 'saveBrandWebsites' } })
+    assert.equal(wa.length, 1, 'the preview and the stale try are not actions')
+    assert.match(wa[0].text, /Filled in the website of 2 brands/)
+    // Undo: one changed by hand since stays.
+    await prisma.brand.update({ where: { id: 'b_quiet' }, data: { website: 'https://quiet.co' } })
+    const wu = await data('undoBrandWebsites')
+    assert.deepEqual([wu.goes.map(g => g.name), wu.stays.map(g => g.name)], [['Bare Bars'], ['Quiet Co']])
+    assert.equal((await data('undoBrandWebsites', { confirm: true })).removed, 1)
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_bare' } })).website, null)
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_quiet' } })).website, 'https://quiet.co')
+    await assert.rejects(data('undoBrandWebsites'), /Nothing to undo/)
+    ok('websites fill in bulk: every brand named first, never over one already there, and Undo leaves a changed one alone');
+
     // ---- never sends ----
     assert.equal(await prisma.emailMessage.count({ where: { status: 'sent' } }), 0)
     ok('nothing was emailed');

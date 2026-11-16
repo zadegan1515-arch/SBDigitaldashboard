@@ -37,6 +37,7 @@ const NEEDS_YES: Record<string, string[]> = {
   elSpread: ['apply'], elSpreadUndo: ['confirm'], elTakeOff: ['confirm'],
   deleteTalksEvent: ['confirm'], removeReferral: ['confirm'],
   saveFoundEmails: ['confirm'], undoFoundEmails: ['confirm'],
+  saveBrandWebsites: ['confirm'], undoBrandWebsites: ['confirm'],
   sendToInstantly: ['confirm'], undoSendToInstantly: ['confirm'],
 }
 // Calls that preview unless told preview: false.
@@ -84,6 +85,8 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'reviewNewBrands': return `${a.action === 'archive' ? 'Archived' : 'Kept'} ${plural(count(a.ids), 'brand')} from New from LinkedIn`
     case 'saveHandTemplate': return `Saved the ${s(a.kind || 'email')} message template on Zach's list`
     case 'saveFoundEmails': return `Saved ${plural(Number(r.saved) || 0, 'email')} from Hunter's file`
+    case 'saveBrandWebsites': return `Filled in the website of ${plural(Number(r.saved) || 0, 'brand')}`
+    case 'undoBrandWebsites': return `Took back ${plural(Number(r.removed) || 0, 'website')} filled in from a list`
     case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
     // Instantly (a Claude session can pick the campaign, turn live updates on
     // and sync; handing people over is a signed-in person's click only).
