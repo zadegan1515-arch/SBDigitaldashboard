@@ -1147,6 +1147,43 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   still not built** — it waits for Leo's first result file.
   Tests: `node scripts/test-find-emails.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-find-emails.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-find-emails-e2e.js`.
+- **Email → Where we stand on emails** (Leo, Nov 17 2026: "I just want all this to be organized. After we run these
+  searches I want numbers on: how many brands have an email · how many brands don't have an email · how many brands don't
+  have a website · how we can find a website for them"; his picks: a card on the Email tab **and** a one-page report, **both
+  numbers** for "has an email" (anyone's, and a buyer's), **only the brands we're not talking to**, websites: "save the 122
+  now, keep finding the rest in rounds, show me each list before saving"). The card above the Hunter card (`#ec-card`, `EC` /
+  `ec*` in app.html, `.ec-` CSS; rules pure in `src/lib/email-coverage.ts`). Data = `emailCoverage` (read-only, a READ_NAMES
+  read): **which brands** = the Hunter card's own places (`findEmailPeople`'s `spots`, so the two never disagree) less
+  talking / known / off (`COLD_SPOTS`; the header says who's left out); per brand (`coverRow`): people on file (someone who
+  said stop isn't counted), emails, **a buyer's** email (`isBuyerTitle`, buyers.ts — the Brands table's Buyers), the saved
+  website's domain, else the domain its people mail from (`companyDomain`), a LinkedIn page, and how Hunter can look it up
+  (`find`: its domain · under its parent company · by name only — the Hunter card's `coOf` rule). Four tiles: **Have an
+  email** · **Have a buyer's email** (each "+N thanks to Hunter" = brands whose every address came from Hunter: the line a
+  saved file leaves in the person's notes, or `Contact.source` 'hunter') · **No email yet** (people to look up / nobody on
+  file; searchable by website / parent / name only) · **No website saved** (email domain known / only a LinkedIn page / just
+  the name). Chips open the brands behind a number (No email yet · An email, but not a buyer's · No website saved; 40 then
+  Show all; a name opens the brand page; Download these) and **By category**. **Marks** (Setting `emailCoverageMarks`, last
+  40, the first never dropped; advisory-locked): the numbers kept as a line after `saveFoundEmails` / `undoFoundEmails` /
+  `saveBrandWebsites` / `undoBrandWebsites` apply (`coverMarkQuietly` — a save never fails for its mark) and by hand
+  (`markEmailCoverage({ label })`; the first = the start); the card's "Since <day>: brands with an email a → b · …" reads
+  from the first one, **History** lists them. **How the missing websites get found** (in the card): (1) **websites found,
+  waiting for your yes** — a Claude session's web research (no paid lookup) put up with `stageBrandWebsites({ rows: [{
+  brandId, website, how: 'search' | 'unsure' | 'memory' | 'emails', note }] })` → Setting `brandWebsitesStaged` ({ rows, no }
+  — nothing is saved on a brand; a brand's newer find replaces its older one; a brand that got a website, a social /
+  marketplace link and a website he turned down are left out, named); **Review them** lists every one with a tick — only the
+  sure ones ticked (`isSure`: found and confirmed, or from email addresses; a well-known brand not looked up and an
+  unconfirmed find start unticked) — **Save N websites** = `saveBrandWebsites` preview then confirm with its `expect` (only
+  an empty website is filled), **Not theirs** = `dropStagedWebsites` (off the list, never offered for that brand again);
+  (2) brands whose people's email addresses give the domain → **Review & save as websites** (the same list, built on the
+  page); (3) the ones still to find → **Download the list** for the next round. Last list · **Undo** = `undoBrandWebsites`
+  (names what goes first). **Download the report** = a print page of the same numbers, the history and every category
+  (`ecReportHtml`). The Hunter card's save / undo reload this card, and a website save reloads the Hunter card. All three
+  writes are ClaudeActions; reading the numbers never is. **A round of website lookups** (any Claude session): read the
+  brands with no website and no mail domain (`emailCoverage.rows`), look them up on the open web (subagents share ~200 web
+  searches a turn, so say "from memory" for household names and search the rest), `stageBrandWebsites`, tell Leo they're
+  waiting on the card. Done Nov 17: 122 saved by Leo's yes, 342 staged (75 found, 244 well-known not looked up, 23 not
+  confirmed), ~60 not found. Tests: `node scripts/test-email-coverage.mjs`, `NODE_PATH=$(npm root -g) node
+  scripts/test-email-coverage.js` (page), and in `test-find-emails-e2e.js` (real handlers).
 - **Email → Instantly** (Leo, Nov 16 2026: "I want to get the emails from Hunter, connect that to Instantly, and run
   cold outreach through Instantly", then "lets build it connected now", then — once it showed on the Email tab — "make
   this its own tab and make it all cleaner"). A sub-tab of the Email top tab — Email · Instantly · Templates — (view `instantly`, `loadInstantly`,
