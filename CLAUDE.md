@@ -1134,7 +1134,14 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   call); `test-instantly-e2e.js` holds both. A new group on this list must be decided there too.
   **Domain Search is the main route** (Leo, later Nov 16 2026, after importing the people file into Hunter's *Leads* and
   seeing a credit an email: "lets do the domain search" — reported at about a credit a company for up to 10 emails, and
-  it finds more people at each; Hunter's pricing page still couldn't be opened from the cloud session). The card's
+  it finds more people at each; Hunter's pricing page still couldn't be opened from the cloud session). **What it really
+  costs** (Leo, Nov 17 2026: "it takes a lot of credits to do that"; Hunter's help pages, read through web search): the bulk
+  Domain Search is **1 credit per 1–10 emails returned per company**, charged on the first download of the result (later
+  downloads free; nothing found = no credit), and **verification is 0.5 credit an email**, charged when the bulk is
+  launched and only offered when the cap is 10 or fewer. Its settings: max emails per company (1–5,000), personal /
+  generic, departments as "only" or "in priority". So the cheap run = **10 emails a company, verification off,
+  departments in priority** (≤ 1 credit a company; with verification up to 6), best Brand Fit first — never "all emails"
+  (a big company is dozens of credits). The card's
   websites file now covers **every company still missing emails** (`feCompanies`: the people file's brands as the chips
   and category stand + the brands with nobody on file; "Domain Search — N companies still missing emails (M with nobody
   on file)", how many share a line, how many go by name for want of a website). On Nov 16: 711 companies, 191 with a
