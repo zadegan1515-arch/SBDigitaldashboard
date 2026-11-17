@@ -61,6 +61,10 @@ import {
   cleanEmail as cleanFoundEmail, sigOf as findSig, FIND_MIN_DAYS, FRESH_PER_BRAND, FOUND_LAST_KEY, type FoundContact, type HunterRow, type FindRow, type FreshBrand, type BrandSpot,
 } from '@/lib/find-emails'
 import {
+  coverage as emailCover, markNumbers, cleanMarks, addMark, cleanStaged, planStage, dropStaged, waiting as waitingSites,
+  MARKS_KEY as COVER_MARKS_KEY, STAGED_KEY as SITES_STAGED_KEY, type CoverBrand, type Mark, type MarkWhy, type StagedState,
+} from '@/lib/email-coverage'
+import {
   planPush, leadFor, campaignView, batchId, INSTANTLY_KEY_ENV, KEY_SCOPES as INSTANTLY_SCOPES,
   SYNC_KEY as INSTANTLY_SYNC_KEY, PUSH_LAST_KEY as INSTANTLY_PUSH_KEY, PUSH_MAX as INSTANTLY_PUSH_MAX,
   STATE_WORDS as INSTANTLY_STATE_WORDS, type PushPerson, type Campaign as InstantlyCampaign,
@@ -3131,7 +3135,69 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
     return co
   }
   const withCo = (r: FindRow): HunterRow & { domainFrom: string | null; parent: string | null } => ({ ...r, ...coOf(r.brandId, r.brandName) })
-  return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size }
+  return { list, fresh, coOf, withCo, heldBrands, held, dealBrands, tally, brandTotal: spotOf.size, spots: spotOf, brands: ctx.brands }
+}
+
+// Email → "Where we stand on emails" (email-coverage.ts; Leo, Nov 17 2026: "how
+// many brands have an email · how many brands don't have an email · how many
+// brands don't have a website"). The brands we're not talking to — the Hunter
+// card's own places (findEmailPeople's spots), so the two never disagree —
+// each with its people; an address counts as Hunter's when the file left its
+// line in the person's notes or Hunter's search added the person.
+async function emailCoverageNow() {
+  const [f, fromHunter] = await Promise.all([
+    findEmailPeople({ minDays: 0, perBrand: FRESH_PER_BRAND }),
+    prisma.contact.findMany({
+      where: { email: { not: null }, OR: [{ source: 'hunter' }, { notes: { contains: 'Email added from Hunter' } }] },
+      select: { id: true },
+    }),
+  ])
+  const hunter = new Set(fromHunter.map(c => c.id))
+  const brands: CoverBrand[] = []
+  for (const b of f.brands) {
+    const spot = f.spots.get(b.id)
+    if (!spot) continue                 // a person on the Show Board is not a brand
+    brands.push({
+      id: b.id, name: b.name, category: b.category, spot, website: b.website, linkedinUrl: b.linkedinUrl,
+      parent: parentOf(b.name, b.aka)?.name ?? null,
+      people: b.contacts.map(c => ({ title: c.title, email: c.email, hunter: hunter.has(c.id), stopped: !!c.doNotContactAt })),
+    })
+  }
+  return { cover: emailCover(brands), brands: f.brands }
+}
+
+// The numbers as they stand, kept as a line (email-coverage.ts marks): after
+// a Hunter file or a list of websites is saved or taken back, and by hand
+// (the start). Advisory-locked; the first line is never dropped.
+async function addCoverMark(why: MarkWhy, label: string, by: string | null): Promise<Mark> {
+  const { cover } = await emailCoverageNow()
+  const mark: Mark = { at: new Date().toISOString(), by, why, label: label.slice(0, 120), n: markNumbers(cover.n) }
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${COVER_MARKS_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: COVER_MARKS_KEY } })
+    let v: unknown = null
+    try { v = row ? JSON.parse(row.value) : null } catch { v = null }
+    const value = JSON.stringify(addMark(cleanMarks(v), mark))
+    await tx.setting.upsert({ where: { key: COVER_MARKS_KEY }, create: { key: COVER_MARKS_KEY, value }, update: { value } })
+  })
+  return mark
+}
+// A save never fails for its mark.
+const coverMarkQuietly = (why: MarkWhy, label: string, by: string | null) => addCoverMark(why, label, by).catch(() => null)
+const nOf = (n: number, one: string, many = one + 's') => n + ' ' + (n === 1 ? one : many)
+
+// The websites waiting for Leo's yes: one writer at a time, read fresh.
+async function updateStagedSites<T>(fn: (s: StagedState, tx: Prisma.TransactionClient) => Promise<{ state: StagedState; out: T }>): Promise<T> {
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${SITES_STAGED_KEY}))::text`
+    const row = await tx.setting.findUnique({ where: { key: SITES_STAGED_KEY } })
+    let v: unknown = null
+    try { v = row ? JSON.parse(row.value) : null } catch { v = null }
+    const { state, out } = await fn(cleanStaged(v), tx)
+    const value = JSON.stringify(state)
+    await tx.setting.upsert({ where: { key: SITES_STAGED_KEY }, create: { key: SITES_STAGED_KEY, value }, update: { value } })
+    return out
+  }, { maxWait: 10000, timeout: 30000 })
 }
 
 const WEBSITES_LAST_KEY = 'brandWebsitesLast'
@@ -15966,13 +16032,14 @@ const handlers: Record<string, Handler> = {
         await tx.setting.upsert({ where: { key: FOUND_LAST_KEY }, create: { key: FOUND_LAST_KEY, value }, update: { value } })
       }
     }, { maxWait: 10000, timeout: 55000 })
+    if (saved.length) await coverMarkQuietly('file', 'After Hunter’s file — ' + nOf(saved.length, 'email') + ' saved', talksBy(__user))
     return { applied: true, saved: saved.length, skipped: todo.length - saved.length, brands: new Set(saved.map(s => s.brandName)).size, ...summary }
   },
 
   // Take the last file's addresses back out. Without confirm it names who
   // loses theirs and who keeps it (rule 6): an address stays when it was
   // changed since, or when an email to that person was drafted or sent since.
-  async undoFoundEmails({ confirm = false }: any = {}) {
+  async undoFoundEmails({ confirm = false, __user }: any = {}) {
     const row = await prisma.setting.findUnique({ where: { key: FOUND_LAST_KEY } })
     let last: any = null
     try { last = row ? JSON.parse(row.value) : null } catch { last = null }
@@ -16007,6 +16074,7 @@ const handlers: Record<string, Handler> = {
       }
       await tx.setting.delete({ where: { key: FOUND_LAST_KEY } })
     }, { maxWait: 10000, timeout: 55000 })
+    if (removed) await coverMarkQuietly('file', 'After ' + nOf(removed, 'email') + ' from Hunter’s file ' + (removed === 1 ? 'was' : 'were') + ' taken back', talksBy(__user))
     return { applied: true, removed, ...summary }
   },
 
@@ -16402,9 +16470,10 @@ const handlers: Record<string, Handler> = {
         await tx.setting.upsert({ where: { key: WEBSITES_LAST_KEY }, create: { key: WEBSITES_LAST_KEY, value }, update: { value } })
       }
     }, { maxWait: 10000, timeout: 55000 })
+    if (saved.length) await coverMarkQuietly('websites', 'After ' + nOf(saved.length, 'website') + ' ' + (saved.length === 1 ? 'was' : 'were') + ' filled in', talksBy(__user))
     return { applied: true, saved: saved.length, skipped: todo.length - saved.length, counts }
   },
-  async undoBrandWebsites({ confirm = false }: any = {}) {
+  async undoBrandWebsites({ confirm = false, __user }: any = {}) {
     const last = await readJsonSetting<{ at: string; by: string | null; rows: Array<{ brandId: string; name: string; website: string }> } | null>(prisma, WEBSITES_LAST_KEY, null)
     const rows = last && Array.isArray(last.rows) ? last.rows : []
     if (!rows.length) throw new Error('Nothing to undo — no websites were saved from a list.')
@@ -16419,7 +16488,75 @@ const handlers: Record<string, Handler> = {
       for (const g of goes) removed += (await tx.brand.updateMany({ where: { id: g.brandId, website: g.website }, data: { website: null } })).count
       await tx.setting.delete({ where: { key: WEBSITES_LAST_KEY } })
     }, { maxWait: 10000, timeout: 55000 })
+    if (removed) await coverMarkQuietly('websites', 'After ' + nOf(removed, 'website') + ' ' + (removed === 1 ? 'was' : 'were') + ' taken back', talksBy(__user))
     return { applied: true, removed, ...summary }
+  },
+
+  // ── Where we stand on emails (Leo, Nov 17 2026) ─────────────────────────
+  // "I just want all this to be organized. After we run these searches I want
+  // numbers on: how many brands have an email · how many brands don't have an
+  // email · how many brands don't have a website · how we can find a website
+  // for them." His picks: a card on the Email tab with a one-page report, two
+  // numbers for "has an email" (anyone's, and a buyer's), only the brands
+  // we're not talking to, and websites Claude finds shown to him before
+  // they're saved. Rules pure in src/lib/email-coverage.ts. Read-only.
+  async emailCoverage() {
+    const [{ cover, brands }, marksRaw, stagedRaw, lastWeb, lastFile] = await Promise.all([
+      emailCoverageNow(),
+      readJsonSetting<unknown>(prisma, COVER_MARKS_KEY, []),
+      readJsonSetting<unknown>(prisma, SITES_STAGED_KEY, null),
+      readJsonSetting<any>(prisma, WEBSITES_LAST_KEY, null),
+      readJsonSetting<any>(prisma, FOUND_LAST_KEY, null),
+    ])
+    const marks = cleanMarks(marksRaw)
+    const cold = new Set(cover.rows.map(r => r.id))
+    const staged = waitingSites(cleanStaged(stagedRaw), new Map(brands.map(b => [b.id, { name: b.name, website: b.website }])))
+      .map(r => ({ ...r, counted: cold.has(r.brandId) }))
+    const last = (v: any) => v && Array.isArray(v.rows) && v.rows.length ? { at: v.at, by: v.by ?? null, count: v.rows.length } : null
+    return {
+      today: localDayKey(new Date()), at: new Date().toISOString(),
+      n: cover.n, total: cover.total, out: cover.out, byCategory: cover.byCategory, rows: cover.rows,
+      marks, staged, lastWebsites: last(lastWeb), lastFile: last(lastFile),
+    }
+  },
+
+  // Keep today's numbers as a line (the first one is "the start" the card
+  // counts from).
+  async markEmailCoverage({ label, __user }: any = {}) {
+    const marks = cleanMarks(await readJsonSetting<unknown>(prisma, COVER_MARKS_KEY, []))
+    const words = String(label ?? '').replace(/\s+/g, ' ').trim()
+    const mark = await addCoverMark(marks.length ? 'mark' : 'start', words || (marks.length ? 'Marked by hand' : 'The start'), talksBy(__user))
+    return { ok: true, mark, marks: marks.length + 1 }
+  },
+
+  // Websites a Claude session found (the open web — never a paid lookup),
+  // put up for Leo's yes: nothing is saved on a brand here. rows = [{ brandId,
+  // website, how: 'search' | 'memory' | 'emails', note }]. A brand's newer
+  // find replaces its older one; a brand that has a website by now, a link
+  // that isn't a company's site, and a website he turned down for that brand
+  // are left out, each named. He saves them from the card (saveBrandWebsites).
+  async stageBrandWebsites({ rows, __user }: any = {}) {
+    const list = (Array.isArray(rows) ? rows : []).slice(0, 2000)
+    if (!list.length) throw new Error('No websites in the list')
+    const ids = [...new Set(list.map((r: any) => String(r?.brandId ?? '')).filter(Boolean))] as string[]
+    const plan = await updateStagedSites(async (state, tx) => {
+      const all = [...new Set([...ids, ...state.rows.map(r => r.brandId)])]
+      const found = all.length ? await tx.brand.findMany({ where: { id: { in: all } }, select: { id: true, name: true, website: true } }) : []
+      const p = planStage(state, list, { brands: new Map(found.map(b => [b.id, b])), at: new Date().toISOString(), by: talksBy(__user) })
+      return { state: p.state, out: p }
+    })
+    return { ok: true, staged: plan.counts.staged, waiting: plan.state.rows.length, counts: plan.counts, left: plan.lines.filter(l => l.action !== 'staged') }
+  },
+  // "Not theirs": off the waiting list, and that website isn't offered for
+  // the brand again.
+  async dropStagedWebsites({ brandIds }: any = {}) {
+    const ids = (Array.isArray(brandIds) ? brandIds : []).map(String).filter(Boolean)
+    if (!ids.length) throw new Error('No brand named')
+    const dropped = await updateStagedSites(async state => {
+      const d = dropStaged(state, ids)
+      return { state: d.state, out: d.dropped }
+    })
+    return { ok: true, dropped: dropped.length, names: dropped.map(d => d.website) }
   },
 
   // ── Zach's tab (Leo, Nov 8 2026) ────────────────────────────────────────

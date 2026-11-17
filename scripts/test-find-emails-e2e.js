@@ -408,6 +408,81 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await assert.rejects(data('undoBrandWebsites'), /Nothing to undo/)
     ok('websites fill in bulk: every brand named first, never over one already there, and Undo leaves a changed one alone');
 
+    // ---- where we stand on emails (email-coverage.ts) ----
+    const cv = await data('emailCoverage')
+    const spots = {}
+    for (const ec_c of Object.values((await data('noAnswerList', { minDays: 0 })).tally)) for (const [k, v] of Object.entries(ec_c)) spots[k] = (spots[k] || 0) + v
+    const COLD = ['list', 'ready', 'nobody', 'tooNew', 'emailed', 'waiting', 'held']
+    assert.equal(cv.n.brands, COLD.reduce((s, k) => s + (spots[k] || 0), 0), 'the brands counted are the Hunter card’s own, less the ones we’re talking to or set aside')
+    assert.deepEqual([cv.out.talking, cv.out.known, cv.out.off], [spots.talking || 0, spots.known || 0, spots.off || 0])
+    assert.equal(cv.n.brands + cv.out.talking + cv.out.known + cv.out.off + cv.out.other, cv.total)
+    assert.equal(cv.rows.length, cv.n.brands)
+    assert.equal(cv.n.email + cv.n.noEmail, cv.n.brands)
+    assert.equal(cv.n.website + cv.n.noWebsite, cv.n.brands)
+    assert.equal(cv.n.noWebsiteMail + cv.n.noWebsitePage + cv.n.noWebsiteNothing, cv.n.noWebsite)
+    assert.equal(cv.n.findDomain + cv.n.findParent + cv.n.findName, cv.n.noEmail)
+    assert.equal(cv.byCategory.reduce((s, ec_c) => s + ec_c.n.brands, 0), cv.n.brands)
+    const rowOf = (ec_c, name) => ec_c.rows.find(r => r.name === name)
+    // Nova Pouch: nine on file, one said stop; Hana's address was on file, Pat's came from Hunter's file — so not "only thanks to Hunter".
+    const nova = rowOf(cv, 'Nova Pouch')
+    assert.deepEqual([nova.people, nova.emails, nova.buyerEmails, nova.hunterOnly, nova.website, nova.find], [8, 2, 2, false, 'novapouch.com', 'domain'])
+    assert.deepEqual([rowOf(cv, 'Zest Soda').people, rowOf(cv, 'Zest Soda').website, rowOf(cv, 'Zest Soda').find], [0, 'zestsoda.com', 'domain'])
+    assert.deepEqual([rowOf(cv, 'Bare Bars').emails, rowOf(cv, 'Bare Bars').website, rowOf(cv, 'Bare Bars').find], [0, null, 'name'])
+    assert.equal(rowOf(cv, 'Stop Co'), undefined, 'a brand that asked us to stop is not counted')
+    ok('the numbers: the Hunter card’s own brands, each once — an email, a buyer’s, no email, no website — and they add up');
+
+    // A brand whose only address comes from Hunter's file: "thanks to Hunter", and the save leaves a line.
+    await brand('b_hunt', 'Hunt Co', { category: 'energy' })
+    await person('h_1', 'b_hunt', 'Hugo Hunt', 'Head of Events')
+    const cb = await data('emailCoverage')
+    assert.deepEqual([rowOf(cb, 'Hunt Co').emails, rowOf(cb, 'Hunt Co').people], [0, 1])
+    const hf = csv([HEAD, line('h_1', 'Hugo', 'Hunt', 'Hunt Co', 'hugo@huntco.com', 'valid', 96)])
+    const hp = await data('saveFoundEmails', { csv: hf })
+    assert.equal((await data('saveFoundEmails', { csv: hf, confirm: true, expect: hp.expect, ids: ['h_1'] })).saved, 1)
+    const ca = await data('emailCoverage')
+    const hunt = rowOf(ca, 'Hunt Co')
+    assert.deepEqual([hunt.emails, hunt.buyerEmails, hunt.hunterOnly, hunt.buyerHunterOnly, hunt.website, hunt.mailDomain], [1, 1, true, true, null, 'huntco.com'])
+    assert.deepEqual([ca.n.email, ca.n.emailHunter, ca.n.buyerHunter, ca.n.noEmail], [cb.n.email + 1, cb.n.emailHunter + 1, cb.n.buyerHunter + 1, cb.n.noEmail - 1])
+    assert.equal(ca.marks.length, cb.marks.length + 1)
+    const lm = ca.marks[ca.marks.length - 1]
+    assert.deepEqual([lm.why, lm.label, lm.n.email, lm.n.brands], ['file', 'After Hunter’s file — 1 email saved', ca.n.email, ca.n.brands])
+    assert.equal(ca.lastFile.count, 1)
+    const ec_mk = await data('markEmailCoverage', { label: '  Before   Domain Search ' })
+    assert.deepEqual([ec_mk.mark.why, ec_mk.mark.label, ec_mk.mark.n.email], ['mark', 'Before Domain Search', ca.n.email])
+    ok('an address from Hunter’s file counts as Hunter’s, and each save leaves the numbers as a line');
+
+    // Websites Claude found wait for a yes: nothing is saved on a brand by staging.
+    const st = await data('stageBrandWebsites', { rows: [
+      { brandId: 'b_bare', website: 'https://www.BareBars.com/', how: 'search', note: 'its own store' },
+      { brandId: 'b_hunt', website: 'huntco.com', how: 'memory' },
+      { brandId: 'b_zest', website: 'zest.com' }, { brandId: 'b_bare', website: 'bare.co' }, { brandId: 'nope', website: 'x.co' },
+      { brandId: 'b_lone', website: 'https://www.instagram.com/loneco' },
+    ] })
+    assert.deepEqual(st.counts, { staged: 2, has: 1, bad: 1, unknown: 1, twice: 1, no: 0 })
+    assert.equal((await prisma.brand.findUnique({ where: { id: 'b_bare' } })).website, null, 'staging saves nothing on a brand')
+    let cs = await data('emailCoverage')
+    assert.deepEqual(cs.staged.map(s => [s.name, s.website, s.how, s.note, s.counted]), [['Bare Bars', 'barebars.com', 'search', 'its own store', true], ['Hunt Co', 'huntco.com', 'memory', '', true]])
+    // Not theirs: off the list, and that website is never offered for the brand again.
+    assert.equal((await data('dropStagedWebsites', { brandIds: ['b_hunt'] })).dropped, 1)
+    const st2 = await data('stageBrandWebsites', { rows: [{ brandId: 'b_hunt', website: 'www.huntco.com' }] })
+    assert.deepEqual([st2.staged, st2.counts.no, st2.waiting], [0, 1, 1])
+    await assert.rejects(data('stageBrandWebsites', { rows: [] }), /No websites in the list/)
+    // Saved from the list (the card's Save): it leaves the waiting ones, the numbers move and a line is kept.
+    const sp = await data('saveBrandWebsites', { rows: [{ brandId: 'b_bare', website: 'barebars.com' }] })
+    assert.equal((await data('saveBrandWebsites', { rows: [{ brandId: 'b_bare', website: 'barebars.com' }], confirm: true, expect: sp.expect })).saved, 1)
+    const noSite = cs.n.noWebsite
+    cs = await data('emailCoverage')
+    assert.deepEqual(cs.staged, [])
+    assert.deepEqual([rowOf(cs, 'Bare Bars').website, rowOf(cs, 'Bare Bars').find, cs.n.noWebsite], ['barebars.com', 'domain', noSite - 1])
+    assert.deepEqual([cs.lastWebsites.count, cs.marks[cs.marks.length - 1].why, cs.marks[cs.marks.length - 1].label], [1, 'websites', 'After 1 website was filled in'])
+    const acts = await prisma.claudeAction.findMany({ where: { fn: { in: ['stageBrandWebsites', 'dropStagedWebsites', 'markEmailCoverage', 'emailCoverage'] } } })
+    assert.deepEqual(acts.map(a => a.text).sort(), [
+      'Kept today’s email numbers as a line (Before Domain Search)',
+      'Put 2 websites up for your yes (Email → Where we stand on emails)',
+      'Took 1 website off the list waiting for your yes',
+    ])
+    ok('websites found wait for a yes: staged, turned down for good, saved from the list — and reading the numbers is never an action');
+
     // ---- never sends ----
     assert.equal(await prisma.emailMessage.count({ where: { status: 'sent' } }), 0)
     ok('nothing was emailed');

@@ -1660,6 +1660,31 @@
   .su-show{background:none;border:1px solid var(--border);color:var(--accent-hi);font:inherit;font-size:12.5px;border-radius:99px;padding:2px 10px;cursor:pointer;white-space:nowrap}
   .su-show:hover{border-color:var(--accent)}
   .su-show.on{background:var(--accent-soft);border-color:var(--accent)}
+  /* Email: where we stand on emails — brands with an email, without, without a website (Leo, Nov 17 2026; email-coverage.ts) */
+  .ec-card{margin-top:18px;padding:16px 18px}
+  .ec-h{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
+  .ec-h b{font-size:16px}
+  .ec-acts{margin-left:auto;display:inline-flex;gap:8px;align-items:center}
+  .ec-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  @media (max-width:1100px){.ec-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:640px){.ec-grid{grid-template-columns:minmax(0,1fr)}}
+  .ec-grid .su-big small{font-size:14px;font-weight:500;color:var(--ink-2);font-family:var(--body,inherit)}
+  .ec-grid .su-sub{margin-bottom:0;line-height:1.55}
+  .ec-good .su-big{color:var(--good)}
+  .ec-plus{color:var(--good);font-weight:600}
+  .ec-since{margin:12px 0 2px;font-size:13.5px;line-height:1.7;color:var(--ink-2)}
+  .ec-since b{color:var(--ink-1)}
+  .ec-web{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--border-soft);border-radius:10px;font-size:13.5px;line-height:1.65;color:var(--ink-2)}
+  .ec-web h4{font-size:14px;margin:0 0 6px;color:var(--ink-1)}
+  .ec-web ol{margin:0;padding-left:20px}
+  .ec-web li{margin:4px 0}
+  .ec-web b{color:var(--ink-1)}
+  .ec-web .su-show{margin-left:4px}
+  .ec-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 4px;font-size:13.5px;color:var(--ink-2)}
+  .ec-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ec-table th.ec-num{text-align:right}
+  .ec-site{color:var(--accent-hi);text-decoration:none}
+  .ec-site:hover{text-decoration:underline}
   /* Outreach → Email: find emails with Hunter — who didn't answer on LinkedIn + brands not reached yet (Leo, Nov 16 2026; find-emails.ts) */
   .fe-card{margin-top:18px;padding:16px 18px}
   .fe-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
@@ -3054,6 +3079,8 @@
     <section class="view page" id="email-out">
       <div class="eyebrow">Email</div>
       <h1>Email outreach</h1>
+      <!-- Where we stand on emails: brands with an email / without / without a website (Leo, Nov 17 2026; ec*, src/lib/email-coverage.ts) -->
+      <div id="ec-card"></div>
       <!-- Find emails for the people who didn't answer on LinkedIn (Leo, Nov 16 2026; fe*, src/lib/find-emails.ts) -->
       <div id="fe-card"></div>
       <!-- Cold email through Instantly has its own tab (Email → Instantly); this points there. -->
@@ -20538,6 +20565,360 @@ function lintDraft(subject, body) {
 }
 
 
+// ---- Where we stand on emails ----------------------------------------
+// Leo, Nov 17 2026: "I just want all this to be organized. After we run these
+// searches I want numbers on: how many brands have an email · how many brands
+// don't have an email · how many brands don't have a website · how we can
+// find a website for them." His picks: a card here plus a one-page report,
+// two numbers for "has an email" (anyone's, and a buyer's), only the brands
+// we're not talking to, and websites Claude finds shown to him before they're
+// saved. EC / ec*, .ec- CSS; rules pure in src/lib/email-coverage.ts. Data =
+// emailCoverage (read-only): n (the numbers), rows (a line per brand counted),
+// byCategory, out (who's left out), marks (the numbers on earlier days — the
+// first is the start), staged (websites waiting for his yes), lastWebsites.
+// Websites: Review → ticks → Save = saveBrandWebsites (preview, then confirm
+// with its expect; only an empty website is filled), Not theirs =
+// dropStagedWebsites, Undo = undoBrandWebsites (names what goes first).
+var EC = { data: null, err: '', open: '', all: false, web: null, note: '', busy: false };
+var EC_HOW = { search: 'Found on the web', unsure: 'Found on the web — not confirmed', memory: 'A well-known brand — not looked up', emails: 'Their people’s email addresses' };
+// Ticked from the start: the ones found and confirmed, and the ones their own email addresses give.
+function ecSure(how) { return how === 'search' || how === 'emails'; }
+var EC_FIND = { domain: 'By its website', parent: 'Under its parent company', name: 'By name only' };
+var EC_LISTS = {
+  noemail: { label: 'No email yet', pick: function (r) { return !r.emails; } },
+  nobuyer: { label: 'An email, but not a buyer’s', pick: function (r) { return r.emails && !r.buyerEmails; } },
+  nosite: { label: 'No website saved', pick: function (r) { return !r.website; } }
+};
+
+function ecShell() {
+  var box = document.getElementById('ec-card');
+  if (!box || box.firstChild) return box;
+  box.innerHTML = '<div class="panel ec-card"><div id="ec-top"></div><div id="ec-review"></div><div id="ec-list"></div></div>';
+  box.addEventListener('click', ecOnClick);
+  box.addEventListener('change', ecOnChange);
+  ecRender();
+  return box;
+}
+function ecLoad() {
+  if (!ecShell()) return Promise.resolve();
+  return api('emailCoverage').then(function (d) {
+    if (!d || !d.n || !Array.isArray(d.rows)) throw new Error('no answer');
+    EC.data = d; EC.err = '';
+    ecRender();
+  }).catch(function (e) {
+    EC.err = e.message || 'Request failed';
+    ecRender();
+  });
+}
+function ecPct(a, b) { return b ? Math.round(a / b * 100) : 0; }
+function ecCat(k) { return feCatName(k || '~'); }
+function ecDay(at) { return shortDate(at); }
+// The brands with no website whose people's addresses give the domain, and the ones still to find
+// (neither that nor a find waiting for a yes).
+function ecStagedIds() { var m = {}; ((EC.data && EC.data.staged) || []).forEach(function (r) { m[r.brandId] = 1; }); return m; }
+function ecFromMail() {
+  var st = ecStagedIds();
+  return EC.data ? EC.data.rows.filter(function (r) { return !r.website && r.mailDomain && !st[r.id]; }) : [];
+}
+function ecToFind() {
+  var st = ecStagedIds();
+  return EC.data ? EC.data.rows.filter(function (r) { return !r.website && !r.mailDomain && !st[r.id]; }) : [];
+}
+
+function ecRender() {
+  var top = document.getElementById('ec-top');
+  if (!top) return;
+  var d = EC.data, title = '<b>Where we stand on emails</b>';
+  if (!d) {
+    top.innerHTML = '<div class="ec-h">' + title + '</div><div class="fe-dim">' +
+      (EC.err ? 'Couldn’t count them: ' + esc(EC.err) + ' <button class="su-show" data-ec="refresh">Try again</button>' : 'Counting…') + '</div>';
+    return;
+  }
+  var n = d.n, o = d.out || {};
+  var outN = (o.talking || 0) + (o.known || 0) + (o.off || 0) + (o.other || 0);
+  var outWhy = [
+    o.talking ? o.talking + ' replied, in talks or said no' : '', o.known ? o.known + ' with a deal, a show or a Show Board request' : '',
+    o.off ? o.off + ' archived or set aside' : '', o.other ? o.other + ' other' : ''
+  ].filter(Boolean).join(' · ');
+  var hunter = function (x) { return x ? '<span class="ec-plus">+' + x + ' thanks to Hunter</span>' : 'none from Hunter yet'; };
+  var tile = function (id, cls, head, big, sub) {
+    return '<div class="su-tile' + (cls ? ' ' + cls : '') + '"><div class="su-h">' + head + '</div><div class="su-big" id="' + id + '">' + big + '</div><div class="su-sub">' + sub + '</div></div>';
+  };
+  var of = function (x) { return x + '<small> of ' + n.brands + ' · ' + ecPct(x, n.brands) + '%</small>'; };
+  var hv = function (x) { return x + (x === 1 ? ' has' : ' have'); };
+  var start = (d.marks || [])[0];
+  var step = function (label, was, now) {
+    var diff = now - was;
+    return label + ' <b>' + was + ' → ' + now + '</b>' + (diff ? ' (' + (diff > 0 ? '+' : '−') + Math.abs(diff) + ')' : '');
+  };
+  var staged = d.staged || [], fromMail = ecFromMail(), toFind = ecToFind();
+  var lw = d.lastWebsites;
+  var web = [];
+  if (staged.length) web.push('<li id="ec-staged"><b>' + plural(staged.length, 'website') + ' found, waiting for your yes.</b> <button class="su-show" data-ec="review" data-src="staged">Review them</button></li>');
+  if (fromMail.length) web.push('<li id="ec-frommail"><b>' + plural(fromMail.length, 'brand') + '</b> — their people’s email addresses already give the domain, so Hunter can search ' + (fromMail.length === 1 ? 'it' : 'them') + ' now. <button class="su-show" data-ec="review" data-src="mail">Review &amp; save as websites</button></li>');
+  web.push('<li id="ec-tofind"><b>' + plural(toFind.length, 'brand') + '</b> still to find — Claude looks them up on the web in rounds, and each list lands here for your yes before anything is saved.' +
+    (toFind.length ? ' <button class="su-show" data-ec="dl" data-list="tofind">Download the list</button>' : '') + '</li>');
+  var chip = function (k) {
+    var c = d.rows.filter(EC_LISTS[k].pick).length;
+    return '<button class="chip' + (EC.open === k ? ' active' : '') + '" data-ec="list" data-k="' + k + '" aria-pressed="' + (EC.open === k ? 'true' : 'false') + '">' + EC_LISTS[k].label + ' · ' + c + '</button>';
+  };
+  top.innerHTML =
+    '<div class="ec-h">' + title +
+      '<span class="fe-dim">The ' + plural(n.brands, 'brand') + ' we’re not talking to' + (outN ? ' — ' + outN + ' more are left out (' + outWhy + ')' : '') + '.</span>' +
+      '<span class="ec-acts"><button class="btn-ghost" data-ec="report">Download the report</button><button class="su-show" data-ec="refresh">↻ Refresh</button></span></div>' +
+    '<div class="ec-grid">' +
+      tile('ec-email', 'ec-good', 'Have an email', of(n.email), 'anyone there · ' + hunter(n.emailHunter)) +
+      tile('ec-buyer', 'ec-good', 'Have a buyer’s email', of(n.buyerEmail), 'partnerships, events, marketing or a founder · ' + hunter(n.buyerHunter)) +
+      tile('ec-noemail', '', 'No email yet', of(n.noEmail),
+        hv(n.noEmailPeople) + ' people to look up · ' + hv(n.noEmailNobody) + ' nobody on file<br>Hunter can search ' + n.findDomain + ' by website' +
+        (n.findParent ? ', ' + n.findParent + ' under their parent company' : '') + ', ' + n.findName + ' by name only') +
+      tile('ec-nosite', '', 'No website saved', of(n.noWebsite),
+        n.noWebsiteMail + ' we know the email domain · ' + hv(n.noWebsitePage) + ' only a LinkedIn page · ' + n.noWebsiteNothing + ' just the name') +
+    '</div>' +
+    (start ? '<div class="ec-since" id="ec-since">Since ' + ecDay(start.at) + (start.label ? ' (' + esc(start.label) + ')' : '') + ': ' +
+      [step('brands with an email', start.n.email, n.email), step('with a buyer’s email', start.n.buyerEmail, n.buyerEmail), step('websites saved', start.n.website, n.website)].join(' · ') +
+      '. <button class="su-show' + (EC.open === 'hist' ? ' on' : '') + '" data-ec="list" data-k="hist">History</button></div>' : '') +
+    '<div class="ec-web" id="ec-web"><h4>How the missing websites get found</h4><ol>' + web.join('') + '</ol>' +
+      '<div class="fe-dim">Until a website is saved, Hunter looks a brand up by its name, which finds fewer people.</div>' +
+      (lw ? '<div class="fe-last" id="ec-lastweb">Last list: ' + plural(lw.count, 'website') + ' saved ' + ecDay(lw.at) + (lw.by ? ' by ' + esc(lw.by) : '') +
+        ' · <button class="su-show" data-ec="undoweb">Undo</button></div>' : '') +
+      (EC.note ? '<div class="fe-dim" id="ec-note">' + esc(EC.note) + '</div>' : '') + '</div>' +
+    '<div class="ec-row">See the brands: ' + chip('noemail') + chip('nobuyer') + chip('nosite') +
+      '<button class="chip' + (EC.open === 'cats' ? ' active' : '') + '" data-ec="list" data-k="cats" aria-pressed="' + (EC.open === 'cats' ? 'true' : 'false') + '">By category</button></div>';
+  ecRenderList();
+  ecRenderReview();
+}
+
+function ecNumCells(n) {
+  return '<td class="ec-num">' + n.brands + '</td><td class="ec-num">' + n.email + '</td><td class="ec-num">' + n.buyerEmail + '</td><td class="ec-num">' + n.noEmail + '</td><td class="ec-num">' + n.noWebsite + '</td>';
+}
+var EC_NUM_HEAD = '<th class="ec-num">Brands</th><th class="ec-num">Have an email</th><th class="ec-num">A buyer’s email</th><th class="ec-num">No email</th><th class="ec-num">No website</th>';
+function ecRenderList() {
+  var box = document.getElementById('ec-list');
+  if (!box) return;
+  var d = EC.data, k = EC.open;
+  if (!d || !k) { box.innerHTML = ''; return; }
+  if (k === 'cats') {
+    box.innerHTML = '<div class="fe-tablewrap" data-scroll="ec-cats"><table class="fe-table ec-table" id="ec-cats"><thead><tr><th>Category</th>' + EC_NUM_HEAD + '</tr></thead><tbody>' +
+      (d.byCategory || []).map(function (c) { return '<tr><td>' + esc(ecCat(c.key)) + '</td>' + ecNumCells(c.n) + '</tr>'; }).join('') +
+      '<tr><td><b>All</b></td>' + ecNumCells(d.n) + '</tr></tbody></table></div>';
+    return;
+  }
+  if (k === 'hist') {
+    var marks = (d.marks || []).slice().reverse();
+    box.innerHTML = '<div class="fe-tablewrap" data-scroll="ec-hist"><table class="fe-table ec-table" id="ec-hist"><thead><tr><th>When</th><th>What</th>' + EC_NUM_HEAD + '</tr></thead><tbody>' +
+      '<tr><td>Now</td><td></td>' + ecNumCells(d.n) + '</tr>' +
+      marks.map(function (m) { return '<tr><td>' + ecDay(m.at) + '</td><td>' + esc(m.label) + (m.by ? ' <span class="fe-dim">· ' + esc(m.by) + '</span>' : '') + '</td>' + ecNumCells(m.n) + '</tr>'; }).join('') +
+      '</tbody></table></div>';
+    return;
+  }
+  var rows = d.rows.filter(EC_LISTS[k].pick);
+  var cut = EC.all ? rows : rows.slice(0, 40);
+  box.innerHTML = '<div class="fe-tablewrap" data-scroll="ec-list"><table class="fe-table ec-table" id="ec-rows"><thead><tr>' +
+    '<th>Brand</th><th>Category</th><th class="ec-num">People on file</th><th class="ec-num">With an email</th><th>Website</th><th>How Hunter looks it up</th></tr></thead><tbody>' +
+    cut.map(function (r) {
+      return '<tr><td><button class="fe-link" data-brand="' + esc(r.id) + '">' + esc(r.name) + '</button></td><td>' + esc(ecCat(r.category)) + '</td>' +
+        '<td class="ec-num">' + r.people + '</td><td class="ec-num">' + r.emails + (r.emails ? ' <span class="fe-dim">(' + r.buyerEmails + ' a buyer’s)</span>' : '') + '</td>' +
+        '<td>' + (r.website ? esc(r.website) : r.mailDomain ? '<span class="fe-dim">none saved — their mail is @' + esc(r.mailDomain) + '</span>' : '<span class="fe-dim">none' + (r.linkedin ? ' — LinkedIn page saved' : '') + '</span>') + '</td>' +
+        '<td>' + EC_FIND[r.find] + (r.find === 'parent' && r.parent ? ' <span class="fe-dim">(' + esc(r.parent) + ')</span>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="fe-foot">' + (rows.length > cut.length ? '<button class="su-show" data-ec="all">Show all ' + rows.length + '</button>' : '') +
+      (rows.length ? '<button class="su-show" data-ec="dl" data-list="' + k + '">Download these ' + rows.length + '</button>' : '<span class="fe-dim">None.</span>') + '</div>';
+}
+
+// Websites to look over before they're saved: every one named, ticked or not.
+function ecRenderReview() {
+  var box = document.getElementById('ec-review');
+  if (!box) return;
+  var w = EC.web;
+  if (!w) { box.innerHTML = ''; return; }
+  var unsure = w.rows.filter(function (r) { return !ecSure(r.how); }).length;
+  box.innerHTML = '<div class="fe-pv" id="ec-pv">' +
+    '<div class="fe-pvh"><b>' + esc(w.title) + '</b><span class="fe-dim">' + plural(w.rows.length, 'brand') + ' · only an empty website box is filled · Undo takes them back out</span></div>' +
+    (unsure ? '<div class="fe-warn" id="ec-unsure">' + unsure + (unsure === 1 ? ' is' : ' are') + ' less sure — a well-known brand Claude didn’t look up, or a find it couldn’t confirm — and ' + (unsure === 1 ? 'is' : 'are') + ' unticked. Tick the ones you trust.</div>' : '') +
+    (w.note ? '<div class="fe-warn" id="ec-pvnote">' + esc(w.note) + '</div>' : '') +
+    '<div class="fe-tablewrap" data-scroll="ec-pv"><table class="fe-table" id="ec-sites"><thead><tr><th></th><th>Brand</th><th>Website</th><th>Where it came from</th><th></th></tr></thead><tbody>' +
+    w.rows.map(function (r) {
+      return '<tr><td class="fe-tk"><input type="checkbox" data-ectick="' + esc(r.brandId) + '"' + (w.tick[r.brandId] ? ' checked' : '') + ' aria-label="Save ' + esc(r.name) + '’s website"></td>' +
+        '<td><button class="fe-link" data-brand="' + esc(r.brandId) + '">' + esc(r.name) + '</button></td>' +
+        '<td><a class="ec-site" href="https://' + esc(r.website) + '" target="_blank" rel="noopener">' + esc(r.website) + ' ↗</a></td>' +
+        '<td class="' + (ecSure(r.how) ? '' : 'fe-maybe') + '">' + (EC_HOW[r.how] || EC_HOW.search) + (r.note ? ' <span class="fe-dim">· ' + esc(r.note) + '</span>' : '') + '</td>' +
+        '<td>' + (w.src === 'staged' ? '<button class="su-show" data-ec="notsite" data-id="' + esc(r.brandId) + '" title="Take it off the list — it won’t be offered for this brand again">Not theirs</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="fe-foot"><button class="btn-solid" data-ec="savesites" id="ec-save"></button>' +
+      '<button class="su-show" data-ec="tickall">Tick all</button><button class="su-show" data-ec="ticknone">Untick all</button>' +
+      (unsure ? '<button class="su-show" data-ec="tickok">Only the sure ones</button>' : '') +
+      '<button class="btn-ghost" data-ec="closereview">Close</button></div>' +
+  '</div>';
+  ecSyncSave();
+}
+function ecTicked() { return EC.web ? EC.web.rows.filter(function (r) { return EC.web.tick[r.brandId]; }) : []; }
+function ecSyncSave() {
+  var b = document.getElementById('ec-save');
+  if (!b) return;
+  var n = ecTicked().length;
+  b.textContent = EC.busy ? 'Saving…' : 'Save ' + plural(n, 'website');
+  b.disabled = EC.busy || !n;
+}
+function ecOpenReview(src) {
+  var d = EC.data;
+  if (!d) return;
+  var rows = src === 'staged'
+    ? (d.staged || []).map(function (r) { return { brandId: r.brandId, name: r.name, website: r.website, how: r.how, note: r.note }; })
+    : ecFromMail().map(function (r) { return { brandId: r.id, name: r.name, website: r.mailDomain, how: 'emails', note: '' }; });
+  if (!rows.length) return;
+  var tick = {};
+  rows.forEach(function (r) { tick[r.brandId] = ecSure(r.how); });
+  EC.web = { src: src, title: src === 'staged' ? 'Websites found — waiting for your yes' : 'Websites from their people’s email addresses', rows: rows, tick: tick, note: '' };
+  ecRender();
+  var pv = document.getElementById('ec-pv');
+  if (pv && pv.scrollIntoView) pv.scrollIntoView({ block: 'nearest' });
+}
+// Save the ticked ones: the server says what it would save first (a brand that got a website
+// meanwhile is left as it is), then saves exactly that.
+function ecSaveSites() {
+  var rows = ecTicked().map(function (r) { return { brandId: r.brandId, website: r.website }; });
+  if (!rows.length || EC.busy) return;
+  EC.busy = true; ecSyncSave();
+  var done = function (msg) { EC.busy = false; if (EC.web) EC.web.note = msg || ''; ecRenderReview(); };
+  api('saveBrandWebsites', { rows: rows }).then(function (p) {
+    if (!p.counts || !p.counts.save) { done('Nothing left to save — every ticked brand already has a website.'); return ecLoad(); }
+    return api('saveBrandWebsites', { rows: rows, confirm: true, expect: p.expect }).then(function (r) {
+      if (!r.applied) { done('Something changed while saving — look again and save once more.'); return ecLoad(); }
+      EC.busy = false;
+      var saved = {};
+      rows.forEach(function (x) { saved[x.brandId] = 1; });
+      var left = EC.web ? EC.web.rows.filter(function (x) { return !saved[x.brandId]; }) : [];
+      if (EC.web && left.length) { EC.web.rows = left; EC.web.note = ''; } else EC.web = null;
+      EC.note = 'Saved ' + plural(r.saved, 'website') + (r.skipped ? ' · ' + r.skipped + ' already had one by then' : '') + '.';
+      toast('Saved ' + plural(r.saved, 'website'));
+      if (typeof feLoad === 'function') feLoad();
+      return ecLoad();
+    });
+  }).catch(function (e) { done(''); toast(e.message || 'Couldn’t save'); });
+}
+function ecUndoSites() {
+  api('undoBrandWebsites').then(function (p) {
+    var names = p.goes.slice(0, 12).map(function (g) { return '• ' + g.name + ' — ' + g.website; });
+    if (p.goes.length > 12) names.push('…and ' + (p.goes.length - 12) + ' more');
+    var keep = p.stays.length ? '\n\n' + plural(p.stays.length, 'brand keeps', 'brands keep') + ' theirs (changed since).' : '';
+    var ask = p.goes.length
+      ? 'Take back ' + plural(p.goes.length, 'website') + ' saved ' + ecDay(p.at) + '?\n\n' + names.join('\n') + keep
+      : 'Nothing to take back — every website from that list was changed since. Forget the list?';
+    if (!confirm(ask)) return;
+    return api('undoBrandWebsites', { confirm: true }).then(function (r) {
+      EC.note = r.removed ? 'Took back ' + plural(r.removed, 'website') + '.' : '';
+      toast(r.removed ? 'Took back ' + plural(r.removed, 'website') : 'Done');
+      if (typeof feLoad === 'function') feLoad();
+      return ecLoad();
+    });
+  }).catch(function (e) { toast(e.message || 'Couldn’t undo'); });
+}
+function ecListCsv(rows) {
+  return feCsv([['Brand', 'Category', 'People on file', 'With an email', 'With a buyer’s email', 'Website', 'Their mail domain', 'LinkedIn page saved', 'How Hunter looks it up', 'Parent company']].concat(rows.map(function (r) {
+    return [r.name, ecCat(r.category), r.people, r.emails, r.buyerEmails, r.website || '', r.mailDomain || '', r.linkedin ? 'yes' : 'no', EC_FIND[r.find], r.parent || ''];
+  })));
+}
+
+// The one-page report: the same numbers, on a page to print or save as a PDF.
+function ecReportHtml(d) {
+  var n = d.n, o = d.out || {};
+  var day = new Date(d.at || Date.now()).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  var pct = function (x) { return ecPct(x, n.brands) + '%'; };
+  var k = function (big, label, sub) { return '<div><b>' + big + '</b><span>' + label + '</span><i>' + sub + '</i></div>'; };
+  var cells = function (m) { return '<td>' + m.brands + '</td><td>' + m.email + '</td><td>' + m.buyerEmail + '</td><td>' + m.noEmail + '</td><td>' + m.noWebsite + '</td>'; };
+  var head = '<th>Brands</th><th>Have an email</th><th>A buyer’s email</th><th>No email</th><th>No website</th>';
+  var marks = d.marks || [], start = marks[0];
+  var fromMail = ecFromMail().length, toFind = ecToFind().length, staged = (d.staged || []).length;
+  var outN = (o.talking || 0) + (o.known || 0) + (o.off || 0) + (o.other || 0);
+  return '<!doctype html><html><head><meta charset="utf-8"><title>SB Agency — where we stand on emails, ' + esc(day) + '</title><style>' +
+    'body{font:14px/1.5 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:#111;max-width:780px;margin:32px auto;padding:0 24px}' +
+    'h1{font-size:26px;letter-spacing:-.02em;margin:0}h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#777;margin:24px 0 8px}' +
+    '.k{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}.k div{border:1px solid #ddd;border-radius:8px;padding:10px 12px}' +
+    '.k b{display:block;font-size:28px;line-height:1.15}.k span{display:block;font-size:13px;font-weight:600}.k i{display:block;font-style:normal;font-size:12.5px;color:#666;margin-top:2px}' +
+    'table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:right;padding:4px 8px;border-bottom:1px solid #eee}th:first-child,td:first-child{text-align:left}' +
+    'th{font-size:12px;color:#666;font-weight:600}td.l,th.l{text-align:left}ul{margin:6px 0;padding-left:20px}li{margin:3px 0}' +
+    '.foot{margin-top:26px;padding-top:10px;border-top:1px solid #eee;font-size:12.5px;color:#999}@media print{.noprint{display:none}body{margin:12px auto}}</style></head><body>' +
+    '<div style="font-size:13px;letter-spacing:.1em;color:#2a62d6;font-weight:700">SB AGENCY · EMAIL COVERAGE</div>' +
+    '<h1>Where we stand on emails</h1>' +
+    '<div style="color:#555;margin-top:4px">' + esc(day) + ' · the ' + plural(n.brands, 'brand') + ' we’re not talking to' + (outN ? ' (' + outN + ' more left out: in talks, a deal, or archived)' : '') + '</div>' +
+    '<div class="k">' +
+      k(n.email, 'Have an email', pct(n.email) + ' of brands · ' + n.emailHunter + ' thanks to Hunter') +
+      k(n.buyerEmail, 'Have a buyer’s email', pct(n.buyerEmail) + ' · partnerships, events, marketing or a founder') +
+      k(n.noEmail, 'No email yet', n.noEmailPeople + ' with people to look up · ' + n.noEmailNobody + ' with nobody on file') +
+      k(n.noWebsite, 'No website saved', n.noWebsiteMail + ' email domain known · ' + n.noWebsitePage + ' LinkedIn page only · ' + n.noWebsiteNothing + ' name only') +
+    '</div>' +
+    '<h2>The brands with no email — how Hunter can look them up</h2><ul>' +
+      '<li><b>' + n.findDomain + '</b> by their website (Domain Search finds the most this way)</li>' +
+      (n.findParent ? '<li><b>' + n.findParent + '</b> under their parent company’s name</li>' : '') +
+      '<li><b>' + n.findName + '</b> by name only — a website would help</li></ul>' +
+    '<h2>How the missing websites get found</h2><ul>' +
+      (staged ? '<li><b>' + staged + '</b> found and waiting for a yes on the dashboard</li>' : '') +
+      (fromMail ? '<li><b>' + fromMail + '</b> — their people’s email addresses already give the domain</li>' : '') +
+      '<li><b>' + toFind + '</b> still to find — Claude looks them up on the web in rounds; every list is shown before it’s saved</li></ul>' +
+    (start ? '<h2>Since ' + esc(ecDay(start.at)) + '</h2><table><thead><tr><th class="l">When</th><th class="l">What</th>' + head + '</tr></thead><tbody>' +
+      marks.map(function (m) { return '<tr><td>' + esc(ecDay(m.at)) + '</td><td class="l">' + esc(m.label) + '</td>' + cells(m.n) + '</tr>'; }).join('') +
+      '<tr><td><b>Now</b></td><td class="l"></td>' + cells(n) + '</tr></tbody></table>' : '') +
+    '<h2>By category</h2><table><thead><tr><th>Category</th>' + head + '</tr></thead><tbody>' +
+      (d.byCategory || []).map(function (c) { return '<tr><td>' + esc(ecCat(c.key)) + '</td>' + cells(c.n) + '</tr>'; }).join('') +
+      '<tr><td><b>All</b></td>' + cells(n) + '</tr></tbody></table>' +
+    '<div class="foot">' + n.people + ' people on file at these brands, ' + n.emails + ' with an email. A buyer = a partnerships, events, marketing or founder title. ' +
+      'Generated ' + esc(day) + ' from the SB Command Center.</div>' +
+    '<button class="noprint" style="margin-top:18px;padding:10px 18px;font-size:14px" onclick="window.print()">Print / save as PDF</button></body></html>';
+}
+function ecReport() {
+  var d = EC.data;
+  if (!d) return;
+  var w = window.open('', '_blank');
+  if (!w) { toast('Allow pop-ups to open the report'); return; }
+  w.document.write(ecReportHtml(d));
+  w.document.close();
+}
+
+function ecOnClick(e) {
+  var t = e.target.closest('[data-ec], [data-brand]');
+  if (!t) return;
+  var a = t.getAttribute('data-ec');
+  if (!a) { loadBrand(t.getAttribute('data-brand'), null); return; }
+  var d = EC.data;
+  if (a === 'refresh') { ecLoad(); return; }
+  if (a === 'report') { ecReport(); return; }
+  if (a === 'list') { var k = t.getAttribute('data-k'); EC.open = EC.open === k ? '' : k; EC.all = false; ecRender(); return; }
+  if (a === 'all') { EC.all = true; ecRenderList(); return; }
+  if (a === 'dl' && d) {
+    var which = t.getAttribute('data-list');
+    var rows = which === 'tofind' ? ecToFind() : d.rows.filter(EC_LISTS[which].pick);
+    if (!rows.length) return;
+    feSaveFile('sb-brands-' + (which === 'tofind' ? 'website-to-find' : which === 'nosite' ? 'no-website' : which === 'nobuyer' ? 'no-buyer-email' : 'no-email') + '-' + d.today + '.csv', ecListCsv(rows));
+    toast('Downloaded ' + plural(rows.length, 'brand'));
+    return;
+  }
+  if (a === 'review') { ecOpenReview(t.getAttribute('data-src')); return; }
+  if (a === 'closereview') { EC.web = null; ecRenderReview(); return; }
+  if ((a === 'tickall' || a === 'ticknone' || a === 'tickok') && EC.web) {
+    EC.web.rows.forEach(function (r) { EC.web.tick[r.brandId] = a === 'tickall' ? true : a === 'ticknone' ? false : ecSure(r.how); });
+    ecRenderReview();
+    return;
+  }
+  if (a === 'savesites') { ecSaveSites(); return; }
+  if (a === 'notsite' && EC.web) {
+    var id = t.getAttribute('data-id');
+    api('dropStagedWebsites', { brandIds: [id] }).then(function () {
+      if (!EC.web) return;
+      EC.web.rows = EC.web.rows.filter(function (r) { return r.brandId !== id; });
+      if (!EC.web.rows.length) EC.web = null;
+      if (EC.data) EC.data.staged = (EC.data.staged || []).filter(function (r) { return r.brandId !== id; });
+      ecRender();
+    }).catch(function (err) { toast(err.message || 'Couldn’t take it off'); });
+    return;
+  }
+  if (a === 'undoweb') { ecUndoSites(); return; }
+}
+function ecOnChange(e) {
+  var id = e.target.getAttribute && e.target.getAttribute('data-ectick');
+  if (id && EC.web) { EC.web.tick[id] = e.target.checked; ecSyncSave(); }
+}
+
 // ---- Emails for the people who didn't answer on LinkedIn -------------
 // Leo, Nov 16 2026: "start doing cold emails to all the brands that did not
 // accept us … how do we acquire their emails" → "how can i import all of the
@@ -20906,6 +21287,7 @@ function feSave() {
     toast('Saved ' + plural(r.saved, 'email'));
     feRenderPv();
     feLoad();
+    ecLoad();
   }).catch(function (e) { FE.saving = false; feSyncSave(); toast(e.message || 'Couldn’t save'); });
 }
 // Undo the last file: who loses their address is named first.
@@ -20923,6 +21305,7 @@ function feUndo() {
       toast(r.removed ? 'Took back ' + plural(r.removed, 'email') : 'Done');
       feRenderPv();
       feLoad();
+      ecLoad();
     });
   }).catch(function (e) { toast(e.message || 'Couldn’t undo'); });
 }
@@ -21794,6 +22177,7 @@ function loadEmailOutreach() {
   var again = showView('email-out');
   var box = document.getElementById('email-box');
   if (!again) box.innerHTML = '<div class="panel"><div class="empty"><p>Loading…</p></div></div>';
+  ecLoad();
   feLoad();
   return renderEmailMode(box, again);
 }

@@ -19,7 +19,7 @@ const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals'
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
-  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview', 'apiGuide', 'noAnswerList', 'instantlyStatus'])
+  'weekBank', 'weekBankBrowse', 'reachedBrands', 'brandSupply', 'outreachTracker', 'talksLog', 'zachOverview', 'apiGuide', 'noAnswerList', 'instantlyStatus', 'emailCoverage'])
 // Elizabeth's tab (rep-outreach.ts): its reads, and the opening of her day
 // (elToday makes the day's list by itself, like the page opening it).
 for (const fn of ['elToday', 'elWeek', 'elFollow', 'elResults', 'elBrand', 'elSearch', 'elTemplates']) READ_NAMES.add(fn)
@@ -88,6 +88,9 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'saveBrandWebsites': return `Filled in the website of ${plural(Number(r.saved) || 0, 'brand')}`
     case 'undoBrandWebsites': return `Took back ${plural(Number(r.removed) || 0, 'website')} filled in from a list`
     case 'undoFoundEmails': return `Took back ${plural(Number(r.removed) || 0, 'email')} saved from Hunter's file`
+    case 'stageBrandWebsites': return Number(r.staged) ? `Put ${plural(Number(r.staged), 'website')} up for your yes (Email → Where we stand on emails)` : null
+    case 'dropStagedWebsites': return Number(r.dropped) ? `Took ${plural(Number(r.dropped), 'website')} off the list waiting for your yes` : null
+    case 'markEmailCoverage': return `Kept today’s email numbers as a line${r.mark?.label ? ' (' + s(r.mark.label) + ')' : ''}`
     // Instantly (a Claude session can pick the campaign, turn live updates on
     // and sync; handing people over is a signed-in person's click only).
     case 'setInstantlyCampaign': return r.campaign ? `Set the Instantly campaign for ${s(r.label || 'everyone')}: ${s(r.campaign?.name)}` : `Took the Instantly campaign off ${s(r.label || 'a template')}`
