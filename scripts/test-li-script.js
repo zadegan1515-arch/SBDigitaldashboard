@@ -93,6 +93,20 @@ const SCRIPT = fs.readFileSync(path.join(__dirname, 'linkedin-capture.user.js'),
   // A minute's quiet after Leo is too long for a test.
   .replace('var IDLE_MS = 60000;', 'var IDLE_MS = 3000;');
 
+// Sales Navigator's company names against the brand's (Nov 16 2026 run: "Los Sundays
+// Tequila" read its own people as another company's because LinkedIn spells it
+// "Løs Sundays Tequila" — NFD doesn't take the stroke off ø).
+{
+  const src = SCRIPT.match(/function coKey\(s\) \{[\s\S]*?\n  \}\n  function sameCompany\(a, names\) \{[\s\S]*?\n  \}\n/)[0];
+  const sameCompany = new Function(src + 'return sameCompany;')();
+  assert.ok(sameCompany('Løs Sundays Tequila', ['Los Sundays Tequila']), 'ø is o');
+  assert.ok(sameCompany('Ærø Brewing', ['Aero Brewing']), 'æ is ae');
+  assert.ok(sameCompany('Weißbräu GmbH', ['Weissbrau']), 'ß is ss');
+  assert.ok(sameCompany('Café Bustelo', ['Cafe Bustelo']), 'accents still fold');
+  assert.ok(!sameCompany('Paramount Insurance Agency', ['Fashion Nova']), 'another company stays another company');
+  console.log('ok - company names match across ø / æ / ß and accents');
+}
+
 // ---- fake LinkedIn ------------------------------------------------
 function card(slug, name, headline, degree) {
   return '<li class="org-people-profile-card__profile-card-spacing"><section class="artdeco-card">' +
