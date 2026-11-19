@@ -1594,6 +1594,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`importContacts({ rows, source: 'research' })` — LinkedIn links only as a search result showed them, never built; buyer
   titles go in the LinkedIn queue) and **a day** (`planAddBrands` preview → his yes; a giant only with `allowGiants`).
   First topic, Nov 18: nicotine pouches — 13 of the 20 were already on the roster.
+- **Taking people off a brand for good** (Leo, Nov 18 2026: the pouch brand Rogue had seven people from Rogue Fitness,
+  another company, on it — "remove them"; until then a person only left a brand by a merge, a move or the LinkedIn
+  clean-up). `removePeople({ brandId, contactIds })` previews (writes nothing): who would go and how each stands (in the
+  queue / note drafted / next in line / left out / not in the queue), who **stays and why**, ids that aren't at the brand,
+  and `expect`. Rules pure in `src/lib/remove-people.ts` — never someone who said they don't want to continue (the no
+  stays on file), anyone written to (an invite, an accept logged without a date, a DM, a reply, a hand email, a
+  withdrawn invite), a call, emails on the row, an Instantly hand-over, or Elizabeth's list. `confirm` + the preview's
+  `expect` removes exactly those people (their queue rows and drafts go with them) in one transaction that checks once
+  more that nobody was written to since; another list, no stamp or a change since → `stale`, shown again. Setting
+  `peopleRemovedLast` keeps the last removal for `undoRemovePeople` (preview names who comes back; someone saved again
+  since under the same profile, or who has said stop since, isn't made twice; their place in the queue comes back, drafts
+  are rewritten from the templates). Both are ClaudeActions. No button: Claude runs it with
+  `node scripts/cc.mjs removePeople @file.json` — **always show Leo the preview's names before confirming** (rule 6).
+  Tests: `node scripts/test-remove-people.mjs`, `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-remove-people-e2e.js`.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
   move all of the contacts there"): `combineParent({ parent })` previews (writes nothing) every brand `parentOf` puts under
   that parent in `src/lib/parents.ts` → one brand named for the company (the one on the roster, else a new one: the

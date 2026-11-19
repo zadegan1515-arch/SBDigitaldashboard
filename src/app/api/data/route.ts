@@ -119,6 +119,7 @@ import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
+import { sortRemoval, removalSig, readRemovalLog, alreadyBack, type RemoveRow, type Removed, type RemovalLog } from '@/lib/remove-people'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
@@ -4094,6 +4095,8 @@ const CONTACT_CAP_PER_BRAND = 25
 // can remove and those already written to (kept, counted); and roster
 // brands that are sellers. Also the last clean-up, for Undo.
 const LI_CLEANUP_KEY = 'liCleanupLast'
+// The last removePeople, kept for its Undo (remove-people.ts).
+const PEOPLE_REMOVED_KEY = 'peopleRemovedLast'
 async function liCleanupCandidates() {
   const contacts = await prisma.contact.findMany({
     where: { source: 'linkedin', brand: { passedAt: null } },
@@ -9605,6 +9608,129 @@ const handlers: Record<string, Handler> = {
       })
     })
     return { moved: true, ...summary }
+  },
+
+  // Take people off a brand for good (Leo, Nov 18 2026: Rogue the nicotine
+  // pouch had seven people from Rogue Fitness, another company, on it —
+  // "remove them"). Rules pure in src/lib/remove-people.ts: never someone
+  // who said they don't want to continue, was already written to, has a
+  // call or emails on file, is on Elizabeth's list or in Instantly.
+  // Without `confirm` it only names who would go, how each stands, and who
+  // stays and why. Confirm sends the preview's `expect`; a list that
+  // changed since is shown again (`stale`). One transaction, a copy kept
+  // for undoRemovePeople (the last removal only). No button: Claude runs it
+  // with node scripts/cc.mjs removePeople '{"brandId":"…","contactIds":[…]}'.
+  async removePeople({ brandId, contactIds, confirm = false, expect, __user }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!brand) throw new Error('Brand not found')
+    const asked: string[] = (Array.isArray(contactIds) ? contactIds : []).map(String).slice(0, 100)
+    if (!asked.length) throw new Error('Name the people to remove')
+    const found = await prisma.contact.findMany({
+      where: { id: { in: asked }, brandId: brand.id },
+      include: {
+        targets: { include: { instantly: { select: { id: true } }, _count: { select: { emails: true, drafts: true } } } },
+        _count: { select: { repOutreach: true } },
+      },
+    })
+    const rows: RemoveRow[] = found.map(c => ({
+      id: c.id, name: c.name, title: c.title, doNotContactAt: c.doNotContactAt, repOutreach: c._count.repOutreach,
+      targets: c.targets.map(t => ({
+        status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, dmSentAt: t.dmSentAt, repliedAt: t.repliedAt,
+        handDeclinedAt: t.handDeclinedAt, callAt: t.callAt, callBookedAt: t.callBookedAt,
+        emails: t._count.emails, instantly: !!t.instantly, drafts: t._count.drafts, shelved: t.shelved,
+      })),
+    }))
+    const { go, stay, missing } = sortRemoval(asked, rows)
+    const sig = removalSig(brand.id, go)
+    const leftOnBrand = (await prisma.contact.count({ where: { brandId: brand.id } })) - go.length
+    const view = { brand, remove: go, stay, notAtBrand: missing.length, leftOnBrand, expect: sig }
+    if (!confirm) return { preview: true, ...view }
+    if (expect !== sig) return { stale: true, ...view }
+    if (!go.length) return { ok: false, removed: 0, ...view }
+
+    const goIds = go.map(g => g.id)
+    const log: RemovalLog = {
+      at: new Date().toISOString(), by: String(__user || ''), brandId: brand.id, brandName: brand.name,
+      people: found.filter(c => goIds.includes(c.id)).map(c => {
+        const t = c.targets[0]
+        return {
+          name: c.name, title: c.title, email: c.email, phone: c.phone, location: c.location,
+          linkedinUrl: c.linkedinUrl, twitterUrl: c.twitterUrl, source: c.source, externalId: c.externalId,
+          isDecisionMaker: c.isDecisionMaker, notes: c.notes, createdAt: c.createdAt.toISOString(),
+          target: t ? { fitScore: t.fitScore, assignedTo: t.assignedTo, passed: t.status === 'passed', shelved: t.shelved, shelvedHow: t.shelvedHow } : null,
+        }
+      }),
+    }
+    const v = JSON.stringify(log)
+    // An invite or email that landed between the read above and now keeps
+    // its person: checked again inside the delete's own transaction.
+    const done = await prisma.$transaction(async tx => {
+      const touched = await tx.target.count({
+        where: {
+          contactId: { in: goIds },
+          OR: [
+            { sentAt: { not: null } }, { emailedAt: { not: null } }, { dmSentAt: { not: null } }, { repliedAt: { not: null } },
+            { handDeclinedAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted', 'declined'] } },
+          ],
+        },
+      })
+      if (touched) return false
+      await tx.contact.deleteMany({ where: { id: { in: goIds }, brandId: brand.id, doNotContactAt: null } })
+      await tx.setting.upsert({ where: { key: PEOPLE_REMOVED_KEY }, create: { key: PEOPLE_REMOVED_KEY, value: v }, update: { value: v } })
+      return true
+    })
+    if (!done) return { stale: true, ...view }
+    // A freed spot goes to the next person at the brand.
+    try { await reconcileBrandTargets(brand.id) } catch { /* non-fatal */ }
+    return { ok: true, removed: go.length, brand, people: go.map(g => g.name), stay, leftOnBrand }
+  },
+
+  // Puts the last removal back (preview first: who comes back, and who is
+  // on the brand again already). People come back with their place in the
+  // queue — set aside if they were; their drafts are written again from
+  // the templates. Never someone who has since said they don't want to
+  // continue.
+  async undoRemovePeople({ confirm = false }: any = {}) {
+    const last = readRemovalLog(await readJsonSetting<unknown>(prisma, PEOPLE_REMOVED_KEY, null))
+    if (!last || last.undone) throw new Error('No removal to undo')
+    const brand = await prisma.brand.findUnique({ where: { id: last.brandId }, select: { id: true, name: true, stoppedAt: true } })
+    if (!brand) throw new Error(`${last.brandName} is no longer on the dashboard`)
+    const [now, stopIx] = await Promise.all([
+      prisma.contact.findMany({ where: { brandId: brand.id }, select: { name: true, linkedinUrl: true } }),
+      loadStopIndex(),
+    ])
+    const stopped = (p: Removed) => !!stoppedMatch(stopIx, { brandId: brand.id, name: p.name, linkedinUrl: p.linkedinUrl, email: p.email })
+    const there = last.people.filter(p => alreadyBack(p, now, profileSlug))
+    const saidNo = last.people.filter(p => !there.includes(p) && stopped(p))
+    const back = last.people.filter(p => !there.includes(p) && !saidNo.includes(p))
+    const view = {
+      brand: { id: brand.id, name: brand.name }, at: last.at,
+      back: back.map(p => ({ name: p.name, title: p.title })),
+      alreadyThere: there.map(p => p.name), saidNo: saidNo.map(p => p.name),
+    }
+    if (!confirm) return { preview: true, ...view }
+    for (const p of back) {
+      // externalId is unique across the dashboard: given back only if free.
+      const taken = p.externalId ? await prisma.contact.findUnique({ where: { externalId: p.externalId }, select: { id: true } }) : null
+      const c = await prisma.contact.create({
+        data: {
+          brandId: brand.id, name: p.name, title: p.title, email: p.email, phone: p.phone, location: p.location,
+          linkedinUrl: p.linkedinUrl, twitterUrl: p.twitterUrl, source: p.source || 'manual', externalId: taken ? null : p.externalId,
+          isDecisionMaker: !!p.isDecisionMaker, notes: p.notes, createdAt: p.createdAt ? new Date(p.createdAt) : undefined,
+        },
+      })
+      if (p.target && !brand.stoppedAt) {
+        await prisma.target.create({
+          data: {
+            brandId: brand.id, contactId: c.id, fitScore: p.target.fitScore, assignedTo: p.target.assignedTo,
+            ...(p.target.passed ? { status: 'passed' as const } : {}), shelved: p.target.shelved, shelvedHow: p.target.shelvedHow,
+          },
+        })
+      }
+    }
+    if (back.length) { try { await reconcileBrandTargets(brand.id) } catch { /* non-fatal */ } }
+    await writeJsonSetting(prisma, PEOPLE_REMOVED_KEY, { ...last, undone: new Date().toISOString() })
+    return { ok: true, back: back.length, brand: view.brand, people: back.map(p => p.name), alreadyThere: view.alreadyThere, saidNo: view.saidNo }
   },
 
   // -------- per-brand target cap --------
