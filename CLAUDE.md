@@ -972,7 +972,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   queue's job): "people we can reach" (10) and the category's accept rate (5) came out — the first is readiness, which
   Ready before short already ranks, and it pushed brands that need people to the back of the LinkedIn fill — and their
   15 points went to the buying signals (college / music 15 → 25, money 40 → 45, every money and size step × 1.125), so
-  the 75 / 50 bands, the fill's 50 floor and Discover's grades keep their meaning. **Money weighs most** — annual sales or venture money, whichever
+  the 75 / 50 bands, the fill's 50 floor and Discover's grades keep about the same counts (a brand that was Ready nets
+  −5 to −10, one with nobody reachable gains ~3; Suggest Archive's LOW_FIT 35 can list a few more researched brands). **Money weighs most** — annual sales or venture money, whichever
   says more ($5M+ raised = "a lot"; a round in the last 2 years adds); **money to spend, not too big** (Leo, Oct 12
   2026: "i want brands to have money to spend but not be too big"): sales **$10M–$500M = the sweet spot** (45),
   $1M–$10M 25, $500M–$1B 27, a **giant** (`giantOf`, giants.ts — household name, big parent's brand, $1B+) 9 whatever
@@ -1939,10 +1940,10 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   Schedule's brands or names Leo asked for; the list goes best fit first, floor or not (items carry `fit`, the panel
   shows it). The Sales Navigator retry (`snRetry`) only applies when the run has Sales Navigator on.
   **Mid-size first** (1.36–1.38; Leo, Oct 12 2026: "i want to target the midsized brands mainly") was replaced by best
-  Brand Fit first on Oct 19 2026 (above; `midFirst` is false now — Brand Fit already gives mid-size 26 size points vs
-  big 18, so mid-size still wins ties and most close calls). The floor defaults to **50** (`FIT_DEFAULT`):
+  Brand Fit first on Oct 19 2026 (above; `midFirst` is false now — Brand Fit already gives mid-size 29 size points vs
+  big 20, so mid-size still wins ties and most close calls). The floor defaults to **50** (`FIT_DEFAULT`):
   set while Brand Fit still gave big companies 30 size points vs mid-size 22 (at 60 only 14 of 49 mid-size brands
-  passed, vs 100 of 207 big); since Oct 12 mid-size gets 26 and big 18. **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
+  passed, vs 100 of 207 big); since Oct 12 mid-size gets 26 and big 18 (29 and 20 since Nov 19 2026). **Very big brands skipped** (1.35, "Skip very big brands", GM `sbLiSkipBig`, on by default →
   `skipGiants`): held giants (giants.ts) and anything with **1,500+ on LinkedIn** (`VERY_BIG_LI`; Leo: "not reach out
   to any brand with over 1500 employees"), unless Leo OK'd the brand — never a conglomerate (`veryBigWhy`, the
   Schedule's rule); giant research names too (`bigSkipped`).

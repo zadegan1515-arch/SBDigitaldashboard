@@ -82,8 +82,8 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const smallOn = parseSmall(smallSetting)
   // Brand Fit, the score on the ratings list (Leo, Oct 12 2026: "can it only
   // fill in the brands that score highly"): the same rules as the dashboard
-  // (brand-fit.ts, Leo's category priority); the category's accept rate is
-  // left out here (5 points at most). `minFit` = the run's floor: a brand
+  // (brand-fit.ts, Leo's category priority) — the same score as the
+  // dashboard's. `minFit` = the run's floor: a brand
   // under it, too small, not sold in the US, closed or in a Skip category is
   // left off the list — the Schedule's own brands and names Leo asked for
   // never are. Best fit first within each group.

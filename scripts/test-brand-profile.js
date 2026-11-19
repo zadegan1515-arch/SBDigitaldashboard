@@ -73,11 +73,11 @@ const D = {
   fit: {
     score: 89, ruledOut: null, bizNote: null, tooSmall: false, usUnknown: false,
     reasons: [
-      { good: true, text: 'sales $12.3M a year', points: 40 },
-      { good: true, text: 'already sponsors college / music', points: 15 },
+      { good: true, text: 'sales $12.3M a year', points: 45 },
+      { good: true, text: 'already sponsors college / music', points: 25 },
       { good: true, text: 'Top priority category', points: 30 },
       { good: null, text: 'no student use named', points: 0 },
-      { good: null, text: 'only 2 of 4 people we can reach', points: 5 },
+      { good: true, text: 'added by you (+ Add brand)', points: 5 },
       { good: null, text: 'the score stops at 100', points: -1 },
     ],
   },
@@ -214,8 +214,8 @@ async function main() {
   await page.evaluate(() => window.scrollTo(0, 0));
   const fit = await page.$$eval('#b-fit .bx-why li', (els) => els.map((e) => e.className + '|' + e.querySelector('.t').textContent + '|' + e.querySelector('.p').textContent));
   assert.deepEqual(fit, [
-    'y|sales $12.3M a year|+40', 'y|Top priority category|+30', 'y|already sponsors college / music|+15',
-    'q|only 2 of 4 people we can reach|+5', 'q|no student use named|0', 'q|the score stops at 100|−1',
+    'y|sales $12.3M a year|+45', 'y|Top priority category|+30', 'y|already sponsors college / music|+25',
+    'y|added by you (+ Add brand)|+5', 'q|no student use named|0', 'q|the score stops at 100|−1',
   ], 'every reason with its points, most first');
   assert.match(await text('#b-fit'), /Fit 89/);
   assert.equal(await text('.bx-bar #b-plan .b-plan-k'), 'Schedule', 'the Schedule line sits in its bar');

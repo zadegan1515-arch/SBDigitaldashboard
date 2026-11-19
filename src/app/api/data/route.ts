@@ -2761,9 +2761,11 @@ async function invitesSince(since: Date): Promise<Array<{ at: Date; category: st
 // handful of accepts a day.
 let acceptRateMemo: { at: number; rates: AcceptRates } | null = null
 // Leo's category priority (Setting categoryPriority over the defaults in
-// brand-fit.ts). brandFit reads it from here synchronously; every fit
-// computation loads accept rates first, which refreshes this at most once a
-// minute, and setCategoryPriority updates it at once.
+// brand-fit.ts). brandFit reads it from here synchronously; the POST handler
+// loads it before every /api/data handler (kept a minute), and
+// setCategoryPriority updates it at once. Brand Fit no longer reads accept
+// rates (Nov 19 2026), so anything outside a POST that scores brands must
+// call loadCategoryPriority itself.
 // Email → Templates: each category's angle line ('' = no angle of its own).
 const TEMPLATE_ANGLES: Record<string, { insert: string }> = { ...CATEGORY_ANGLES, '': DEFAULT_ANGLE }
 const CATEGORY_PRIORITY_KEY = 'categoryPriority'
@@ -2794,8 +2796,8 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 
 // ── Brand Fit ─────────────────────────────────────────────────────────
 // Which brands are worth reaching out to: rules in src/lib/brand-fit.ts,
-// computed on the fly (accept rates and reachable people move daily, so
-// nothing is stored). `Target.fitScore` is the per-person score — a
+// computed on the fly (facts and Leo's category priority change, so nothing
+// is stored). `Target.fitScore` is the per-person score — a
 // different thing; the brand's is `fit` in every response.
 // about / topProducts / notes: what the brand says it is, for the
 // student fit (student-fit.ts) — required, so a read that leaves them out
@@ -7253,8 +7255,7 @@ const handlers: Record<string, Handler> = {
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
     })
-    // Brand Fit needs the category accept rates (reachable people come
-    // from the contacts already loaded).
+    // Only when the page asks for Brand Fit (fit: true).
     const rates: AcceptRates | null = fit && sorted.length ? await recentAcceptRates() : null
     const facts = coverage && sorted.length ? await readCoverFacts(prisma) : null
     const now = new Date()

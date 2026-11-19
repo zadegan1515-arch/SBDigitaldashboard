@@ -8,7 +8,7 @@
 // for college / music, fits a student's day (made for studying, nights out,
 // game day, energy — Oct 18 2026), growing fast. Brand Fit couldn't tell the hunt's finds
 // apart (137 of 171 were an A on category and signs alone). A find already on
-// the roster uses that brand's own Brand Fit (facts, people, size).
+// the roster uses that brand's own Brand Fit (facts, size, category).
 //
 // Letters (set so the 171 finds of Oct 15 2026 split about 17 / 52 / 63 / 39;
 // a Top category that pays for college, nothing else known, is 45 = C):
