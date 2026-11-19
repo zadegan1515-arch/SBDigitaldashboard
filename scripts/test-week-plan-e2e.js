@@ -217,18 +217,6 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     ok('Pass = a month: off the list and off its day until it ends (a hand add too, still yours after); a hand add ends it; lifted, it is back');
 
     // 2. The spread ----------------------------------------------------------
-    // 13 brands × 3 people need more than one day's room: on a Wednesday
-    // evening in New York the week shown is Thursday alone (35), so a Friday
-    // is opened for the test (it used to fail every Wednesday).
-    {
-      const peek = await data('weekSpread', { week: wb.week, seed: 42 });
-      if (peek.days.reduce((n, d) => n + d.room, 0) < 13 * 3) {
-        const last = peek.days[peek.days.length - 1].date;
-        const fri = new Date(last + 'T12:00:00Z'); fri.setUTCDate(fri.getUTCDate() + 1);
-        await data('setExtraSendingDay', { date: fri.toISOString().slice(0, 10), on: true });
-        wb = await data('weekBank', {});
-      }
-    }
     const planBefore = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } });
     const pv = await data('weekSpread', { week: wb.week, seed: 42 });
     assert.equal((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } }))?.value ?? null, planBefore?.value ?? null, 'a preview writes nothing');
