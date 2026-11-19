@@ -23,7 +23,7 @@ let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
 
 const now = new Date('2026-10-05T12:00:00Z')
-const base = { category: 'energy', reachable: 4, need: 4, acceptRate: 0.3, now }
+const base = { category: 'energy', now }
 const M = 1_000_000 * 100
 
 t('dollars in any common spelling → cents; unreadable → null', () => {
@@ -59,17 +59,17 @@ t('too small: sales unknown → under 20 people on LinkedIn, measured only', () 
 })
 
 t('money weighs most: $5M+ raised outranks every other single signal', () => {
-  const funded = scoreBrand({ ...base, category: 'tech', reachable: 0, acceptRate: null, fundingCents: 6 * M, lastRoundAt: '2025-06-01' })
-  const college = scoreBrand({ ...base, category: 'tech', reachable: 0, acceptRate: null, salesCents: 0, sponsorsCollege: true })
+  const funded = scoreBrand({ ...base, category: 'tech', fundingCents: 6 * M, lastRoundAt: '2025-06-01' })
+  const college = scoreBrand({ ...base, category: 'tech', salesCents: 0, sponsorsCollege: true })
   assert.ok(funded.score > college.score, funded.score + ' vs ' + college.score)
   const moneyReason = funded.reasons.find(r => /raised/.test(r.text))
-  assert.ok(moneyReason.points >= 26)
+  assert.ok(moneyReason.points >= 29)
 })
 
 t('a recent round adds to funding; an old one does not', () => {
   const fresh = scoreBrand({ ...base, fundingCents: 10 * M, lastRoundAt: '2025-12-01' })
   const old = scoreBrand({ ...base, fundingCents: 10 * M, lastRoundAt: '2020-01-01' })
-  assert.equal(fresh.score - old.score, 4)
+  assert.equal(fresh.score - old.score, 5)
 })
 
 t('sales and funding: only the stronger one counts', () => {
@@ -92,11 +92,11 @@ t('no money known: LinkedIn size stands in — mid-size (20–499) scores the mo
 
 t('money to spend but not too big: $10M–$500M in sales scores the most (Leo, Oct 12 2026)', () => {
   const pts = (sales) => scoreBrand({ ...base, salesCents: sales * M }).reasons.find(r => /^sales/.test(r.text))
-  assert.equal(pts(10).points, 40); assert.equal(pts(300).points, 40); assert.equal(pts(500).points, 40)
+  assert.equal(pts(10).points, 45); assert.equal(pts(300).points, 45); assert.equal(pts(500).points, 45)
   assert.match(pts(300).text, /sweet spot/)
-  assert.equal(pts(5).points, 22, 'small but real')
-  assert.equal(pts(700).points, 24, 'big')
-  assert.equal(pts(2000).points, 8, '$1B+ = a giant')
+  assert.equal(pts(5).points, 25, 'small but real')
+  assert.equal(pts(700).points, 27, 'big')
+  assert.equal(pts(2000).points, 9, '$1B+ = a giant')
   assert.equal(pts(0.5).points, 0)
   assert.ok(scoreBrand({ ...base, salesCents: 50 * M }).score > scoreBrand({ ...base, salesCents: 800 * M }).score)
 })
@@ -104,8 +104,8 @@ t('money to spend but not too big: $10M–$500M in sales scores the most (Leo, O
 t('a giant gets the giant\'s points whatever its money says', () => {
   const g = scoreBrand({ ...base, salesCents: 200 * M, giant: 'household name' })
   const ok = scoreBrand({ ...base, salesCents: 200 * M })
-  assert.equal(ok.score - g.score, 32)
-  assert.ok(g.reasons.some(r => /giant \(household name\)/.test(r.text) && r.points === 8))
+  assert.equal(ok.score - g.score, 36)
+  assert.ok(g.reasons.some(r => /giant \(household name\)/.test(r.text) && r.points === 9))
   assert.equal(g.reasons.reduce((s, r) => s + r.points, 0), g.score, 'points still add up')
 })
 
@@ -142,11 +142,28 @@ t('category beats money unless the gap is huge', () => {
 })
 
 t('score stays 0..100 and every point has a reason', () => {
-  const top = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9 })
+  const top = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true })
   assert.equal(top.score, 100)
   assert.equal(top.reasons.reduce((s, r) => s + r.points, 0), 100)
-  const bottom = scoreBrand({ category: 'software', reachable: 0, need: 3, acceptRate: 0, now, salesCents: 0, sponsorsCollege: false })
+  const bottom = scoreBrand({ category: 'software', now, salesCents: 0, sponsorsCollege: false })
   assert.equal(bottom.score, 0)
+})
+
+// Leo, Nov 19 2026: Brand Fit means likely to buy. People we can reach and
+// the category's accept rate came out; their 15 points went to college /
+// music (15 → 25) and money (40 → 45).
+t('likely to buy: people we can reach and accept rates don\'t count; college / music 25, money 45', () => {
+  const r = scoreBrand({ ...base, liMembers: 120 })
+  assert.ok(!r.reasons.some(x => /people we can reach|no one we can reach|accept/.test(x.text)), 'no reach or accept-rate line')
+  assert.equal(scoreBrand({ ...base, liMembers: 120, reachable: 0, need: 4, acceptRate: 0 }).score, r.score, 'old fields are ignored')
+  const col = (v) => scoreBrand({ ...base, sponsorsCollege: v }).reasons.find(x => /college \/ music/.test(x.text)).points
+  assert.deepEqual([col(true), col(undefined), col(false)], [25, 8, 0])
+  const size = (m) => scoreBrand({ ...base, liMembers: m }).reasons.find(x => /^money not known/.test(x.text)).points
+  assert.deepEqual([size(120), size(900), size(9), scoreBrand({ ...base }).reasons.find(x => /^money not known/.test(x.text)).points], [29, 20, 7, 17])
+  // A tiny page (7) so the round, not the size guess, is the stronger line.
+  const fund = (d) => scoreBrand({ ...base, liMembers: 9, fundingCents: d * M }).reasons.find(x => /^raised/.test(x.text)).points
+  assert.deepEqual([fund(600), fund(150), fund(30), fund(6), fund(2)], [27, 41, 36, 29, 11])
+  assert.equal(scoreBrand({ ...base, fundingCents: 200 * M, lastRoundAt: '2026-01-01' }).reasons.find(x => /^raised/.test(x.text)).points, 45, 'a recent round tops out at 45')
 })
 
 // Leo, Oct 18 2026 ("the ideal candidates are people who study and do
@@ -165,7 +182,7 @@ t('fits a student’s day: up to 20 on top, read from what the brand says it is'
   assert.equal(hang.reasons.find(r => /nights out/.test(r.text)).points, 15, 'the write-up counts, the pitch doesn’t')
   const leo = scoreBrand({ ...base, category: 'spirits', name: 'Casa X', notes: 'Leo: pitch them a study-break party' })
   assert.equal(leo.score, scoreBrand({ ...base, category: 'spirits', name: 'Casa X' }).score, 'Leo’s own notes are never read')
-  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9, about: 'Caffeine gum for finals week' })
+  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, about: 'Caffeine gum for finals week' })
   assert.equal(full.score, 100, 'still out of 100')
   assert.equal(full.reasons.reduce((s, r) => s + r.points, 0), 100, 'a line says the score stops at 100, so the points add up')
   assert.equal(scoreBrand({ ...base, name: 'Raze Energy' }).reasons.find(r => /energy \//.test(r.text)).points, 10, 'a name says energy')
@@ -181,7 +198,7 @@ t('added by Leo (the Add a brand chat or + Add brand): +5, nothing else', () => 
   for (const src of ['manual', 'discover', 'linkedin-discover', 'research', 'sponsorunited', null]) {
     assert.equal(scoreBrand({ ...base, source: src }).score, plain.score, String(src))
   }
-  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, acceptRate: 0.9, source: 'chat' })
+  const full = scoreBrand({ ...base, salesCents: 300 * M, sponsorsCollege: true, source: 'chat' })
   assert.equal(full.score, 100); assert.equal(full.reasons.reduce((s, r) => s + r.points, 0), 100, 'still adds up past 100')
 })
 
@@ -224,7 +241,7 @@ t('US unknown: kept, tagged US?', () => {
 })
 
 t('low fit + no signal → suggested only once researched', () => {
-  const weak = { category: 'software', reachable: 0, need: 3, acceptRate: 0.05, now, salesCents: 300_000 * 100, fundingCents: 0, sponsorsCollege: false }
+  const weak = { category: 'software', now, salesCents: 300_000 * 100, fundingCents: 0, sponsorsCollege: false }
   assert.equal(scoreBrand(weak).archiveWhy, null, 'not researched → never suggested on score')
   assert.match(scoreBrand({ ...weak, researchedAt: '2026-10-05' }).archiveWhy, /low fit/)
   // Research that found nothing is not "no signal".

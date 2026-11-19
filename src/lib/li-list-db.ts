@@ -10,7 +10,7 @@ import { readHiddenLog } from './li-hidden'
 import { parentOf, isParentCompany, LI_PARENT_PAGES_KEY } from './parents'
 import { readJsonSetting, LI_CONFIRMED_KEY, LI_REVIEW_KEY, type Confirmed, type Review } from './li-review'
 import { LANES, RESEARCH_EXTRA, brandKey, secondSearchName } from './stock'
-import { dueDays, shortOnPeople, plannedFirst, workNeed } from './planned-first'
+import { dueDays, shortOnPeople, plannedFirst } from './planned-first'
 import { scoreBrand, priorityOf, isTopCategory, addedByLeo } from './brand-fit'
 import { BANK_KEY, cleanBank } from './week-bank'
 import { brandSize } from './brand-size'
@@ -91,15 +91,12 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
   const priorities = await readJsonSetting<Record<string, string>>(prisma, 'categoryPriority', {})
   const now = new Date()
   const fitOf = new Map(everyBrand.map(b => {
-    const big = isBigBrand(b)
     const f = scoreBrand({
       category: b.category, tier: b.tier, liMembers: b.liMembers, hasParent: !!parentOf(b.name, b.aka),
       salesCents: b.salesCents == null ? null : Number(b.salesCents), fundingCents: b.fundingCents == null ? null : Number(b.fundingCents),
       lastRoundAt: b.lastRoundAt, usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus,
       acquiredBy: b.acquiredBy, researchedAt: b.researchedAt,
-      reachable: b.contacts.filter(c => !!(c.email || c.linkedinUrl)).length,
-      need: workNeed({ tier: b.tier, workPeople: b.workPeople, liMembers: b.liMembers, big, top: isTopCategory(b.category, priorities) }),
-      acceptRate: null, priority: priorityOf(b.category, priorities), giant: giantOf(b),
+      priority: priorityOf(b.category, priorities), giant: giantOf(b),
       name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, source: b.source, now,
     })
     return [b.id, f] as const

@@ -162,15 +162,17 @@ t('launches count as growth, once; a footprint that just is doesn’t', () => {
 })
 
 t('a find on the roster grades on its brand’s own Brand Fit', () => {
-  const f = scoreBrand({ category: 'energy', priority: 'top', salesCents: 120 * M, sponsorsCollege: true, reachable: 4, need: 4, acceptRate: 0.3, now })
+  const f = scoreBrand({ category: 'energy', priority: 'top', salesCents: 120 * M, sponsorsCollege: true, now })
   const g = gradeFromFit(f); assert.equal(g.score, f.score); assert.equal(g.grade, 'A')
-  assert.equal(gradeFromFit(scoreBrand({ category: 'energy', priority: 'top', usStatus: 'no', reachable: 4, need: 4, now })).capped, 'not sold in the US')
-  const small = scoreBrand({ category: 'energy', priority: 'top', salesCents: 500_000 * 100, sponsorsCollege: true, reachable: 4, need: 4, now })
+  assert.equal(gradeFromFit(scoreBrand({ category: 'energy', priority: 'top', usStatus: 'no', now })).capped, 'not sold in the US')
+  const small = scoreBrand({ category: 'energy', priority: 'top', salesCents: 500_000 * 100, sponsorsCollege: true, now })
   assert.ok(small.tooSmall); assert.ok(['C', 'D'].includes(gradeFromFit(small).grade))
-  // Neuro on the roster (Oct 18 2026: 63 B) — its write-up lives in its notes.
-  const neuro = scoreBrand({ category: 'energy', priority: 'top', tier: 'growth', name: 'Neuro', reachable: 0, need: 4, now,
+  // Neuro on the roster (Oct 18 2026: 63 B → 83 A; Nov 19 2026, likely to buy:
+  // 87 — mid-size 29, college / music not checked 8, Top 30, studying 20) —
+  // its write-up lives in its notes.
+  const neuro = scoreBrand({ category: 'energy', priority: 'top', tier: 'growth', name: 'Neuro', now,
     notes: 'Discover: ' + NEURO + '\nActivation idea: ' + NEURO_PITCH + '\nFound in: https://example.com' })
-  assert.equal(neuro.score, 83); assert.equal(gradeFromFit(neuro).grade, 'A')
+  assert.equal(neuro.score, 87); assert.equal(gradeFromFit(neuro).grade, 'A')
 })
 
 console.log(n + ' passed')

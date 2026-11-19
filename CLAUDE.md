@@ -967,16 +967,22 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 - **Brand Fit** (Leo, Oct 2026: "a filter process to determine which brands we should reach out to").
   Rules pure in `src/lib/brand-fit.ts` (`node scripts/test-brand-fit.mjs`), computed on the fly (never
   stored; `Target.fitScore` is the per-person score, a different thing). Score 0–100, every point with a
-  reason: **money weighs most** — annual sales or venture money, whichever
+  reason. **It means likely to buy, not likely to answer** (Leo, Nov 19 2026, after the review: over 681 invites people
+  at 65+ brands accepted 20.3%, 50–64 19.8%, under 50 20.7% — the score never predicted accepts; answering is the
+  queue's job): "people we can reach" (10) and the category's accept rate (5) came out — the first is readiness, which
+  Ready before short already ranks, and it pushed brands that need people to the back of the LinkedIn fill — and their
+  15 points went to the buying signals (college / music 15 → 25, money 40 → 45, every money and size step × 1.125), so
+  the 75 / 50 bands, the fill's 50 floor and Discover's grades keep their meaning. **Money weighs most** — annual sales or venture money, whichever
   says more ($5M+ raised = "a lot"; a round in the last 2 years adds); **money to spend, not too big** (Leo, Oct 12
-  2026: "i want brands to have money to spend but not be too big"): sales **$10M–$500M = the sweet spot** (40),
-  $1M–$10M 22, $500M–$1B 24, a **giant** (`giantOf`, giants.ts — household name, big parent's brand, $1B+) 8 whatever
-  its money says, $500M+ raised 24; no money known → LinkedIn size (`brand-size.ts`) stands in — **mid-size 20–499 = 26** (a guess stays under real money),
-  500+ = 18, unknown 15, under 20 = 6; then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
+  2026: "i want brands to have money to spend but not be too big"): sales **$10M–$500M = the sweet spot** (45),
+  $1M–$10M 25, $500M–$1B 27, a **giant** (`giantOf`, giants.ts — household name, big parent's brand, $1B+) 9 whatever
+  its money says; raised $100M–$500M 41, $25M–$100M 36, $5M–$25M 29 (+5 for a round in the last 2 years), $1M–$5M 11,
+  under $1M 2, $500M+ 27; no money known → LinkedIn size (`brand-size.ts`) stands in — **mid-size 20–499 = 29** (a guess stays under real money),
+  500+ = 20, unknown 17, under 20 = 7; then **Leo's category priority** (Oct 7 2026: betting, alcohol, drinks,
   nicotine, electrolytes Top +30; clothing, athletic, tech, AI, fintech Low 0; the rest Middle +15; Skip = 0 and never
   auto-picked; `priorityOf`, editable per category — replaced the flat 18–24 bonus, so a Top brand with money
   unknown beats a Low brand with $50M raised, and only a $100M+ Low brand beats a tiny Top one), already sponsors
-  college / music (15), people we can reach (10), the category's 90-day accept rate (5), **added by Leo** +5 (Oct 19
+  college / music (25; not checked 8, checked and none 0), **added by Leo** +5 (Oct 19
   2026: "brands that we add from Claude, like the add a brand tab, or add a brand chat … priority … plus five points";
   `addedByLeo` / `ADDED_SOURCES` in brand-fit.ts: source `chat` = the Add a brand chat, `site` = typed into the site's
   add boxes — `createBrand` (+ Add brand, the Schedule's and the LinkedIn tab's "add as a new brand", Zach's list's + Add
