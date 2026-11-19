@@ -299,6 +299,13 @@ t('parent companies: the brands whose people are under them, by any spelling', (
   assert.equal(parentOf('Fireball').name, 'Sazerac')
   assert.equal(parentOf('Bang').name, 'Monster Beverage')
   assert.equal(parentOf('Liquid Death'), null)
+  // The nicotine pouch push (Nov 18 2026): Velo's US team is at Reynolds,
+  // Rogue the pouch is Swisher's — and Rogue Fitness is nobody's.
+  assert.equal(parentOf('Velo').name, 'Reynolds American')
+  assert.equal(parentOf('Rogue').name, 'Swisher')
+  assert.equal(parentOf('Rogue Fitness'), null)
+  assert.equal(siblingNamed('Brand Manager, Vuse', 'Velo'), 'Vuse', 'a Vuse person is not Velo’s')
+  assert.equal(siblingNamed('Senior Brand Manager, VELO', 'Velo'), null)
   const all = PARENTS.flatMap(p => p.brands.flatMap(b => b.split('|')))
   assert.equal(new Set(all.map(x => x.toLowerCase())).size, all.length, 'no brand under two parents')
 })

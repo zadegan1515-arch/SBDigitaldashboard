@@ -120,7 +120,12 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(fits, [...fits].sort((a, b) => b - a), 'best Brand Fit first');
     assert.deepEqual(wb.bank.rows.map(r => r.rank), wb.bank.rows.map((_, i) => i + 1), 'ranked 1..n');
     assert.ok(wb.bank.rows.every(r => r.where === 'waiting' && r.going === 3), 'all waiting, three people each');
-    assert.ok(wb.weeks.length >= 1 && wb.days.length === wb.weeks.find(w => w.start === wb.week).days.length, 'the week’s sending days are its columns');
+    // Every coming sending day of this week and next (the page picks the day
+    // once); a week named narrows it to that week's (the spread's).
+    assert.deepEqual(wb.days.map(d => d.date), wb.weeks.flatMap(w => w.days), 'the days: every coming sending day of the weeks offered');
+    assert.ok(wb.days.every(d => wb.weeks.some(w => w.start === d.week && w.which === d.which && w.days.includes(d.date))), 'each day says its week');
+    const lastWeek = wb.weeks[wb.weeks.length - 1];
+    assert.deepEqual((await data('weekBank', { week: lastWeek.start })).days.map(d => d.date), lastWeek.days, 'a week named: that week’s days only');
     const today = nyKey(new Date());
     assert.ok(wb.days.every(d => d.date > today), 'today is never a column');
     ok('the list: Best fit’s own picks, best Brand Fit first, never reached / archived / giant / Skip');
@@ -144,15 +149,17 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     add = await data('weekBankAdd', { brandIds: ['giant'], allowGiants: ['giant'] });
     assert.deepEqual(add.added.map(a => a.id), ['giant'], 'a giant with Add anyway');
     wb = await data('weekBank', {});
-    assert.equal(wb.bank.rows.length, 10, 'hand adds count toward the number');
     const reach = wb.bank.rows.find(r => r.id === 'reach');
+    assert.equal(wb.bank.rows.filter(r => r.where === 'waiting').length, 10, 'hand adds count toward the number — the next 10 waiting');
+    assert.equal(wb.bank.rows.length, reach.where === 'waiting' ? 10 : 11, 'one he added that can’t go yet stays on the list without taking a place');
+    assert.equal(reach.where === 'waiting' ? reach.rank > 0 : reach.rank === 0, true, 'only a waiting brand has a place');
     // Resting — unless the week's first day is the next sending day after its
     // invite (3 days ago), which still belongs to its first sitting (the
     // part-sent rule), as on a Sunday or Monday.
     assert.ok(reach && reach.how === 'hand' && (reach.where === 'cant' ? /rests a week/.test(reach.why) : reach.where === 'waiting'),
       'the reached one: added by hand, resting (or finishing its first sitting): ' + JSON.stringify(reach && { where: reach.where, why: reach.why }));
     assert.equal(wb.bank.rows.find(r => r.id === 'giant')?.where, 'waiting', 'the OK’d giant can go');
-    assert.equal(wb.bank.autoLeft, 5, 'two hand adds pushed two system picks past the number');
+    assert.equal(wb.bank.autoLeft, reach.where === 'waiting' ? 5 : 4, 'his waiting adds pushed system picks past the number');
 
     // Taken off, put back.
     await data('weekBankRemove', { brandIds: [top[0]] });
@@ -183,6 +190,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     wb = await data('weekBank', {});
     assert.ok(!ids().includes(pb), 'a passed brand is off the list');
     assert.equal(wb.bank.rows.length, 12, 'the others stay');
+    assert.deepEqual(wb.bank.passed.map(x => [x.id, x.until]), [[pb, new Date(pr.passedUntil).toISOString()]], 'listed as passed, with the day it ends');
     // One Leo added by hand: off the list while passed, still his after.
     await data('weekBankAdd', { brandIds: [ph] });
     await data('passBrandToday', { brandId: ph });
@@ -208,6 +216,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await data('passBrandToday', { brandId: pb, on: false });
     wb = await data('weekBank', {});
     assert.equal(wb.bank.rows.find(r => r.id === pb)?.where, 'waiting', 'the Pass lifted: back on the list');
+    assert.deepEqual(wb.bank.passed, [], 'nobody on a Pass any more');
     // (as it was: the two hand adds are system picks again)
     await data('weekBankRemove', { brandIds: [pb, ph] });
     await data('weekBankPutBack', { brandIds: [pb, ph] });
@@ -215,6 +224,39 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(wb.bank.rows.length, 13);
     assert.ok(wb.bank.rows.every(r => r.how === 'auto' && r.where === 'waiting'), 'the list as it was');
     ok('Pass = a month: off the list and off its day until it ends (a hand add too, still yours after); a hand add ends it; lifted, it is back');
+
+    // 1c. The NEXT brands (Leo, Nov 19 2026: "it brings up the same brands
+    // over and over again … the next 100 ranked brands") -----------------------
+    const all13 = ids();
+    const topFit = wb.bank.rows[0].fit;
+    const nday = wb.days[0].date;
+    await data('weekBankSize', { size: 10 });
+    wb = await data('weekBank', {});
+    assert.deepEqual(ids(), all13.slice(0, 10), 'the next 10');
+    await data('planAddBrands', { date: nday, brandIds: [all13[0]] });
+    wb = await data('weekBank', {});
+    assert.deepEqual(ids(), all13.slice(1, 11), 'put on a day: it has left the list and the next-ranked brand came in');
+    assert.deepEqual(wb.bank.rows.map(r => r.rank), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'the places close up');
+    assert.equal(wb.bank.autoLeft, 2, 'two more behind them');
+    assert.equal(wb.days.find(d => d.date === nday).pinned.find(x => x.id === all13[0])?.fit, topFit, 'its day shows it, with its score');
+    // One he added himself stays on the list while it sits on a day — uncounted.
+    await data('weekBankAdd', { brandIds: [all13[1]] });
+    await data('planAddBrands', { date: nday, brandIds: [all13[1]] });
+    wb = await data('weekBank', {});
+    const mine = wb.bank.rows.find(r => r.id === all13[1]);
+    assert.ok(mine && mine.how === 'hand' && mine.where === 'day' && mine.day === nday && mine.rank === 0, 'one he added: still on the list, on its day, no place');
+    assert.deepEqual(wb.bank.rows.filter(r => r.where === 'waiting').map(r => r.id), all13.slice(2, 12), 'and the next 10 waiting are the list');
+    assert.equal(wb.bank.autoLeft, 1);
+    // Off the day: back in its place.
+    await data('planRemoveBrand', { date: nday, brandId: all13[0] });
+    await data('planRemoveBrand', { date: nday, brandId: all13[1] });
+    await data('weekBankRemove', { brandIds: [all13[1]] });
+    await data('weekBankPutBack', { brandIds: [all13[1]] });
+    await data('weekBankSize', { size: 100 });
+    wb = await data('weekBank', {});
+    assert.deepEqual(ids(), all13, 'taken off the day: back in its place');
+    assert.ok(wb.bank.rows.every(r => r.how === 'auto' && r.where === 'waiting'));
+    ok('the next brands: one on a day has left the list and the next comes in; one he added stays, uncounted; off the day, back in its place');
 
     // 2. The spread ----------------------------------------------------------
     const planBefore = await prisma.setting.findUnique({ where: { key: 'outreachPlan' } });
@@ -224,7 +266,18 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(pv2.days.map(d => d.add.map(a => a.id)), pv.days.map(d => d.add.map(a => a.id)), 'the same seed deals the same');
     const placed = pv.days.flatMap(d => d.add.map(a => a.id));
     assert.equal(new Set(placed).size, placed.length, 'each brand on one day');
-    assert.equal(placed.length, 13, 'all 13 fit (13 × 3 < the week’s room)');
+    // Every brand here goes out as 3 people, so a day takes floor(room / 3) of
+    // them. With two sending days left in the week all 13 fit; with one — the
+    // test run on a Wednesday, when only Thursday is left: 35 → 11 — the last
+    // two wait on the list for next week (`waitNext`; nobody is "passed
+    // over", which is only a brand a lower one went ahead of). It read "13"
+    // flat and failed every Wednesday.
+    const dealt = Math.min(13, pv.days.reduce((s, d) => s + Math.floor(d.room / 3), 0));
+    assert.ok(dealt >= 10, 'the week has room for most of the list: ' + JSON.stringify(pv.days.map(d => [d.date, d.room])));
+    assert.equal(placed.length, dealt, 'every brand that fits is dealt (13 when the week has two days left): ' + JSON.stringify(pv.days.map(d => [d.date, d.room])));
+    assert.equal(pv.waitNext, 13 - dealt, 'the ones with no room left wait for next week');
+    assert.deepEqual(pv.passedOver, [], 'nobody is passed over: every brand is the same size, so the list is dealt in order');
+    assert.deepEqual([...placed].sort(), wb.bank.rows.slice(0, dealt).map(r => r.id).sort(), 'the best of the list go; the last ones wait');
     for (const d of pv.days) assert.ok(d.addPeople <= d.room, d.date + ' within its room');
     if (pv.days.length >= 3) {
       const dayOf = (rank) => pv.days.find(d => d.add.some(a => a.rank === rank)).date;
@@ -233,7 +286,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     }
     const days = pv.days.map(d => ({ date: d.date, brandIds: d.add.map(a => a.id) }));
     const ap = await data('weekSpread', { apply: true, days });
-    assert.equal(ap.days.reduce((s, d) => s + d.added, 0), 13, 'all 13 put on');
+    assert.equal(ap.days.reduce((s, d) => s + d.added, 0), dealt, 'every dealt brand put on');
     const plan = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
     for (const d of days) assert.deepEqual(plan[d.date].brandIds, d.brandIds, d.date + ' holds exactly the preview, in its order');
     let op = await data('getOutreachPlan', {});
@@ -244,8 +297,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       assert.equal(col.offTheme, 0, d.date + ': nothing off theme');
     }
     wb = await data('weekBank', {});
-    assert.ok(wb.bank.rows.every(r => r.where === 'day'), 'every list brand now sits on a day');
-    assert.ok(wb.days.every(d => d.list), 'the columns say list');
+    assert.equal(wb.bank.rows.length, 13 - dealt, 'every brand put on a day has left the list; the ones with no room still wait');
+    assert.ok(wb.bank.rows.every(r => r.where === 'waiting' && !placed.includes(r.id)));
+    assert.equal(wb.days.reduce((n, d) => n + d.pinned.length, 0), dealt, 'the days show them');
+    assert.ok(wb.days.every(d => d.pinned.every(x => typeof x.fit === 'number')), 'each with its score');
+    assert.ok(wb.days.filter(d => days.some(x => x.date === d.date)).every(d => d.list), 'the days it spread onto say list');
     assert.ok(wb.spreadLast, 'Undo is offered');
     // Plan my week leaves those days alone.
     const pw = await data('planWeek', {});
@@ -263,7 +319,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     }
     const un = await data('undoWeekSpread', { preview: true });
     assert.equal(un.preview, true);
-    assert.equal(un.off.length, days.length > 1 ? 12 : 13, 'Undo takes off what still sits where it put it');
+    assert.equal(un.off.length, dealt - (days.length > 1 ? 1 : 0), 'Undo takes off what still sits where it put it');
     assert.equal(un.stays.length, days.length > 1 ? 1 : 0, 'one Leo moved since stays');
     assert.equal((await prisma.setting.findUnique({ where: { key: 'weekSpreadLast' } })) !== null, true, 'the preview changes nothing');
     await data('undoWeekSpread', {});
@@ -280,6 +336,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.ok(op.days.some(x => days.some(d => d.date === x.date) && x.brands.length > 0), 'Best fit fills them again by itself');
     ok('Undo: off what still sits where it put it, a moved one stays, the days are Best fit again');
     if (days.length > 1) await data('planRemoveBrand', { date: days[1].date, brandId: mover });
+    wb = await data('weekBank', {});
+    assert.equal(wb.bank.rows.length, 13, 'off their days: all 13 wait on the list again');
 
     // 4. A day kept to the list: the Fill box offers the list ------------------
     const d0 = days[0].date;

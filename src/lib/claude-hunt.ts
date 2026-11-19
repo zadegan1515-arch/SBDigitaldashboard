@@ -4,14 +4,16 @@
 // news, sponsorship announcements, retailer shelves, trend coverage — and
 // posts what it finds to /api/discover-ingest. Every row waits on
 // Brands → Discover for Leo to Add or Dismiss; nothing here makes a brand.
-// Leo's picks: priority lanes only, 50 a day, and each brand shows which
-// of his three signs it has (sponsors college / music, aims at 18–24s,
-// mid-size and growing). No LinkedIn page needed: a website or the source
-// it was found in is enough proof it's real.
+// Leo's picks: his Top categories only (below), 50 a day, and each brand
+// shows which of his three signs it has (sponsors college / music, aims at
+// 18–24s, mid-size and growing). No LinkedIn page needed: a website or the
+// source it was found in is enough proof it's real.
 // node scripts/test-claude-hunt.mjs
 
-import { LANES, brandKey } from './stock'
+import { brandKey } from './stock'
 import { giantWhy } from './giants'
+import { CATEGORY_KEYS } from './category-hints'
+import { priorityOf } from './brand-fit'
 
 export const HUNT_PER_DAY = 50
 export const HUNT_PER_POST = 50
@@ -27,7 +29,22 @@ export const HUNT_SOURCES: string[] = [
   'cpglatest.com',
 ]
 
-export const HUNT_LANES: string[] = LANES.filter(l => l.priority).map(l => l.key)
+// Where the hunt looks = the categories Leo has on Top in Category priority
+// (Setting categoryPriority over brand-fit.ts's defaults), so it follows him
+// when he changes one. Leo, Nov 18 2026 ("fix both"): until then it was Stock
+// take's seven priority lanes, which still had clothing and athletic — Low
+// since Oct 7 2026 — so most finds came back a C or D, while Soda, Water &
+// Other Drinks and Alcohol (other), both Top, were never searched.
+// 'unresolved' is a holding pen, never a place to file a find. Every
+// category taken off Top → the defaults, never an empty hunt.
+export function huntLanes(custom?: Record<string, string> | null): string[] {
+  const top = (c?: Record<string, string> | null) =>
+    (CATEGORY_KEYS as readonly string[]).filter(k => k !== 'unresolved' && priorityOf(k, c) === 'top')
+  const mine = top(custom)
+  return mine.length ? mine : top(null)
+}
+// The defaults (no Setting read). The route asks huntLanes with Leo's own.
+export const HUNT_LANES: string[] = huntLanes()
 
 export const HUNT_SIGNALS = {
   sponsors: 'Sponsors college / music',
@@ -80,8 +97,9 @@ export function knownKeys(brands: { name: string; aka: string | null }[], found:
 }
 
 // One posted row → a row to save, or why not. `known` grows as rows are
-// accepted, so the same brand twice in one post saves once.
-export function judgeHuntRow(r: any, known: Set<string>): HuntVerdict {
+// accepted, so the same brand twice in one post saves once. `lanes` = the
+// categories the hunt may file under today (huntLanes).
+export function judgeHuntRow(r: any, known: Set<string>, lanes: string[] = HUNT_LANES): HuntVerdict {
   const name = text(r?.name, 120)
   if (!name) return { ok: false, name: '(no name)', why: 'no name' }
   const key = brandKey(name)
@@ -93,8 +111,8 @@ export function judgeHuntRow(r: any, known: Set<string>): HuntVerdict {
   if (giant) return { ok: false, name, why: 'a giant (' + giant + ')' }
 
   const category = String(r?.category ?? '').trim().toLowerCase()
-  if (!HUNT_LANES.includes(category)) {
-    return { ok: false, name, why: 'not a priority lane (' + (category || 'none') + ')' }
+  if (!lanes.includes(category)) {
+    return { ok: false, name, why: 'not one of the Top categories (' + (category || 'none') + ')' }
   }
 
   const signals = (Array.isArray(r?.signals) ? r.signals : [])

@@ -2,7 +2,8 @@
 // Week plan: the list of ~100 brands and how it is dealt onto the week).
 //
 // Pinned here: the list holds Leo's hand adds plus the best Brand Fit picks
-// up to its number, never a brand he took off; a brand added by hand leaves
+// up to its number, never a brand he took off, and only brands still waiting
+// (one on a day has left it and the next comes in); a brand added by hand leaves
 // once something goes out to it; the weeks offered; each day's room under
 // LinkedIn's week; and the deal — whole brands, an even mix of rank, a day
 // never past its room, one big company a day, the same seed the same deal.
@@ -63,6 +64,18 @@ is('clean drops a dupe hand row and a removed hand id', W.cleanBank({ size: 50, 
   is('adding again clears the taken-off mark, once', [re.added, 'h' in re.state.removed], [['h'], false])
   is('more hand adds than the number: just those', W.composeBank(cands, { size: 1, hand: [{ id: 'b', at: 'x' }, { id: 'c', at: 'x' }], removed: {} }).list.map(x => x.id), ['b', 'c'])
   is('a tie: ready first, then the name', W.composeBank([cand('z', 50, true, true), cand('y', 50, true, false), cand('x', 50, true, true)], { size: 10, hand: [], removed: {} }).list.map(x => x.id), ['x', 'z', 'y'])
+  // The NEXT brands (Leo, Nov 19 2026: "it brings up the same brands over
+  // and over again … the next 100 ranked brands"): a brand already dealt
+  // with — on a day, in today's list, can't go yet — takes no place.
+  const placed = (id, fit, auto = true) => ({ ...cand(id, fit, auto), placed: true })
+  const next = [placed('a', 90), cand('b', 80), placed('c', 70), cand('d', 60), cand('e', 50), cand('f', 40)]
+  const three = W.composeBank(next, { size: 3, hand: [], removed: {} })
+  is('one of the system’s picks on a day has left the list; the next ones take its place', three.list.map(x => x.id), ['b', 'd', 'e'])
+  is('…and what waits behind counts only brands still waiting', three.autoLeft, 1)
+  const mine = W.composeBank([placed('m', 85, false), cand('n', 30, false), ...next], { size: 3, hand: [{ id: 'm', at: 'x' }, { id: 'n', at: 'x' }], removed: {} })
+  is('a brand Leo added stays on the list while it sits on a day — and takes no place', mine.list.map(x => [x.id, x.how, !!x.placed]),
+    [['m', 'hand', true], ['b', 'auto', false], ['d', 'auto', false], ['n', 'hand', false]])
+  is('only his waiting adds count toward the number', mine.list.filter(x => !x.placed).length, 3)
 }
 
 // ---- a hand add is spent ---------------------------------------------------

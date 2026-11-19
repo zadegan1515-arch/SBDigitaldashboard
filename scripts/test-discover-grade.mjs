@@ -112,7 +112,31 @@ t('fits a student’s day: Neuro, made for studying, is an A (was 46 C)', () => 
   assert.match(r(/studying/).text, /nootropic/)
   assert.equal(r(/growing fast/).points, 10, 'a first mass-retail entry is growth')
   assert.match(r(/growing fast/).text, /First mass-retail/)
-  assert.equal(g.score, 76); assert.equal(g.grade, 'A')
+  // 70, not 76: the 6 for "popular with students" came from OUR pitch
+  // ("before a campus show"), which no longer counts (Nov 18 2026).
+  assert.equal(g.score, 70); assert.equal(g.grade, 'A')
+  assert.ok(!g.reasons.some(x => /popular with students/.test(x.text)))
+})
+
+// Leo, Nov 18 2026 (his yes to "fix both"): our own activation idea read as
+// the brand's spend. Protein Pop was 76 A on "already pays for music" — from
+// our line "sampling fridge at … the concert entry".
+t('our pitch idea is never proof: not college / music spend, not a shelf, not an audience', () => {
+  const w = 'Sparkling protein drink from Rise Wellness with 22g whey protein isolate per 12 oz can. Its new line is going into Costco.'
+  const pitch = 'Cold-can sampling fridge at the rec center and the concert entry; students vote on a flavor, plus a QR code for a Walmart coupon.'
+  const alone = gradeDiscovery({ category: 'electrolytes', name: 'Protein Pop', writeUp: w }, ctx('top'))
+  const both = gradeDiscovery({ category: 'electrolytes', name: 'Protein Pop', writeUp: w, text: w + ' ' + pitch }, ctx('top'))
+  assert.deepEqual(both.reasons, alone.reasons)
+  assert.equal(both.score, alone.score)
+  assert.ok(!both.reasons.some(r => /already pays for|popular with students|walmart/.test(r.text)), JSON.stringify(both.reasons))
+  assert.ok(both.reasons.some(r => /no college \/ music spend found/.test(r.text) && r.points === 0))
+  assert.ok(both.reasons.some(r => /^in costco$/.test(r.text)), 'the write-up’s own retailer still counts')
+  // The same words in the brand's write-up are proof.
+  const pays = gradeDiscovery({ category: 'electrolytes', name: 'Protein Pop', writeUp: w + ' Sampling sponsor of the Sea.Hear.Now festival.' }, ctx('top'))
+  assert.ok(pays.reasons.some(r => /already pays for music/.test(r.text) && r.points === 20))
+  // A caller with no write-up field: `text` is the write-up, as before.
+  const old = scoreFind({ priority: 'top', text: 'Official apparel partner of Cal men’s golf.' })
+  assert.ok(old.reasons.some(r => /already pays for college/.test(r.text)))
 })
 
 t('the student fit and launches read the brand’s write-up, never our pitch', () => {
@@ -162,15 +186,17 @@ t('launches count as growth, once; a footprint that just is doesn’t', () => {
 })
 
 t('a find on the roster grades on its brand’s own Brand Fit', () => {
-  const f = scoreBrand({ category: 'energy', priority: 'top', salesCents: 120 * M, sponsorsCollege: true, reachable: 4, need: 4, acceptRate: 0.3, now })
+  const f = scoreBrand({ category: 'energy', priority: 'top', salesCents: 120 * M, sponsorsCollege: true, now })
   const g = gradeFromFit(f); assert.equal(g.score, f.score); assert.equal(g.grade, 'A')
-  assert.equal(gradeFromFit(scoreBrand({ category: 'energy', priority: 'top', usStatus: 'no', reachable: 4, need: 4, now })).capped, 'not sold in the US')
-  const small = scoreBrand({ category: 'energy', priority: 'top', salesCents: 500_000 * 100, sponsorsCollege: true, reachable: 4, need: 4, now })
+  assert.equal(gradeFromFit(scoreBrand({ category: 'energy', priority: 'top', usStatus: 'no', now })).capped, 'not sold in the US')
+  const small = scoreBrand({ category: 'energy', priority: 'top', salesCents: 500_000 * 100, sponsorsCollege: true, now })
   assert.ok(small.tooSmall); assert.ok(['C', 'D'].includes(gradeFromFit(small).grade))
-  // Neuro on the roster (Oct 18 2026: 63 B) — its write-up lives in its notes.
-  const neuro = scoreBrand({ category: 'energy', priority: 'top', tier: 'growth', name: 'Neuro', reachable: 0, need: 4, now,
+  // Neuro on the roster (Oct 18 2026: 63 B → 83 A; Nov 19 2026, likely to buy:
+  // 87 — mid-size 29, college / music not checked 8, Top 30, studying 20) —
+  // its write-up lives in its notes.
+  const neuro = scoreBrand({ category: 'energy', priority: 'top', tier: 'growth', name: 'Neuro', now,
     notes: 'Discover: ' + NEURO + '\nActivation idea: ' + NEURO_PITCH + '\nFound in: https://example.com' })
-  assert.equal(neuro.score, 83); assert.equal(gradeFromFit(neuro).grade, 'A')
+  assert.equal(neuro.score, 87); assert.equal(gradeFromFit(neuro).grade, 'A')
 })
 
 console.log(n + ' passed')

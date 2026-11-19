@@ -119,6 +119,7 @@ import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
+import { sortRemoval, removalSig, readRemovalLog, alreadyBack, emailIsHistory, type RemoveRow, type Removed, type RemovalLog } from '@/lib/remove-people'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
@@ -1887,7 +1888,7 @@ async function rollOverUnsent(): Promise<void> {
         ])
         const back: string[] = []
         for (const b of brands) {
-          if (bestFitEligible(b, planBrandFit(b, rates), q)) continue
+          if (bestFitEligible(b, planBrandFit(b), q)) continue
           back.push(...unsent.get(b.id)!.stamped)
           unsent.delete(b.id)
         }
@@ -2093,7 +2094,7 @@ async function dayThemeChanges(plan: OutreachPlan, date: string, cat: string | n
   const brands = ids.length ? await prisma.brand.findMany({ where: { id: { in: ids } }, select: PLAN_BRAND_SELECT }) : []
   const byId = new Map(brands.map(b => [b.id, b]))
   const [rates, qc] = await Promise.all([bestFit ? recentAcceptRates() : null, readQueueCtx()])
-  const fitOf = new Map(brands.map(b => [b.id, bestFit ? planBrandFit(b, rates) : null]))
+  const fitOf = new Map(brands.map(b => [b.id, bestFit ? planBrandFit(b) : null]))
   // A part-sent brand finishing its first sitting on this day (the morning
   // roll carries it here first) stays, like one that sent today: Best fit
   // never picks a reached brand and its category may be another, so it
@@ -2634,7 +2635,7 @@ function suggestionsFor(
   // some day.
   const openAll = brands.filter(b =>
     !isReached(b) && !b.passedAt && !passedNow(b) && !b.doNotEmail && !inConversation(b) && !heldGiant(b, ctx.q) && !ctx.pinnedOn.has(b.id))
-  const fits = new Map(openAll.map(b => [b.id, planBrandFit(b, fitRates)]))
+  const fits = new Map(openAll.map(b => [b.id, planBrandFit(b)]))
   let hiddenSmall = 0, ruledOut = 0
   const open = openAll.filter(b => {
     const f = fits.get(b.id)!
@@ -2761,9 +2762,11 @@ async function invitesSince(since: Date): Promise<Array<{ at: Date; category: st
 // handful of accepts a day.
 let acceptRateMemo: { at: number; rates: AcceptRates } | null = null
 // Leo's category priority (Setting categoryPriority over the defaults in
-// brand-fit.ts). brandFit reads it from here synchronously; every fit
-// computation loads accept rates first, which refreshes this at most once a
-// minute, and setCategoryPriority updates it at once.
+// brand-fit.ts). brandFit reads it from here synchronously; the POST handler
+// loads it before every /api/data handler (kept a minute), and
+// setCategoryPriority updates it at once. Brand Fit no longer reads accept
+// rates (Nov 19 2026), so anything outside a POST that scores brands must
+// call loadCategoryPriority itself.
 // Email → Templates: each category's angle line ('' = no angle of its own).
 const TEMPLATE_ANGLES: Record<string, { insert: string }> = { ...CATEGORY_ANGLES, '': DEFAULT_ANGLE }
 const CATEGORY_PRIORITY_KEY = 'categoryPriority'
@@ -2794,8 +2797,8 @@ async function recentAcceptRates(): Promise<AcceptRates> {
 
 // ── Brand Fit ─────────────────────────────────────────────────────────
 // Which brands are worth reaching out to: rules in src/lib/brand-fit.ts,
-// computed on the fly (accept rates and reachable people move daily, so
-// nothing is stored). `Target.fitScore` is the per-person score — a
+// computed on the fly (facts and Leo's category priority change, so nothing
+// is stored). `Target.fitScore` is the per-person score — a
 // different thing; the brand's is `fit` in every response.
 // about / topProducts / notes: what the brand says it is, for the
 // student fit (student-fit.ts) — required, so a read that leaves them out
@@ -2822,13 +2825,14 @@ function rateOrNull(rates: AcceptRates | null, category: string | null): number 
   if (!rates || !category || !rates.raw.has(category)) return null
   return rates.of(category)
 }
-function brandFit(b: FitFacts, reachable: number, rates: AcceptRates | null, now = new Date()): FitResult {
+// Likely to buy, not likely to answer (Nov 19 2026): who we can reach and the
+// category's accept rate no longer count, so it needs neither.
+function brandFit(b: FitFacts, now = new Date()): FitResult {
   return scoreBrand({
     category: b.category, tier: b.tier, liMembers: b.liMembers, hasParent: !!parentOf(b.name, b.aka),
     salesCents: centsNum(b.salesCents), fundingCents: centsNum(b.fundingCents), lastRoundAt: b.lastRoundAt,
     usStatus: b.usStatus, sponsorsCollege: b.sponsorsCollege, bizStatus: b.bizStatus, acquiredBy: b.acquiredBy,
-    researchedAt: b.researchedAt,
-    reachable, need: workNeed({ ...b, big: isBigBrand(b), top: topCat(b.category) }), acceptRate: rateOrNull(rates, b.category), priority: categoryPriority(b.category),
+    researchedAt: b.researchedAt, priority: categoryPriority(b.category),
     giant: giantOf(b), name: b.name, about: b.about, topProducts: b.topProducts, notes: b.notes, source: b.source, now,
   })
 }
@@ -2866,7 +2870,7 @@ function autoRankedOf(list: Array<{ b: PlanBrand; f: FitResult }>): AutoRanked[]
 }
 function bestFitRanked(brands: PlanBrand[], rates: AcceptRates | null, q: QueueCtx): AutoRanked[] {
   return autoRankedOf(brands
-    .map(b => ({ b, f: planBrandFit(b, rates) }))
+    .map(b => ({ b, f: planBrandFit(b) }))
     .filter(({ b, f }) => bestFitEligible(b, f, q)))
 }
 // What a day's automatic picks may take, best Brand Fit first — one rule
@@ -2879,7 +2883,7 @@ function autoDayRanked(theme: string, brands: PlanBrand[], rates: AcceptRates | 
   if (!isCategoryTheme(theme)) return bestFitRanked(brands, rates, q)
   return autoRankedOf(brands
     .filter(b => b.category === theme)
-    .map(b => ({ b, f: planBrandFit(b, rates) }))
+    .map(b => ({ b, f: planBrandFit(b) }))
     .filter(({ b, f }) => bestFitEligible(b, f, q, { allowSkip: true })))
 }
 // The where-clause that narrows the brand read before bestFitRanked does
@@ -2906,8 +2910,8 @@ function fitBrief(f: FitResult) {
     ruledOut: f.ruledOut, bizNote: f.bizNote, archiveWhy: f.archiveWhy, usUnknown: f.usUnknown,
   }
 }
-function planBrandFit(b: PlanBrand, rates: AcceptRates | null): FitResult {
-  return brandFit(b, b.contacts.filter(isReachable).length, rates)
+function planBrandFit(b: PlanBrand): FitResult {
+  return brandFit(b)
 }
 
 // The fact columns a research row / the brand page can set, and how each
@@ -3096,7 +3100,7 @@ async function findEmailPeople(opts: { minDays: number; perBrand: number; now?: 
   const spotOf = new Map<string, BrandSpot>(Object.entries(list.spots) as Array<[string, BrandSpot]>)
   for (const b of ctx.brands) {
     if (tracked.has(b.id) || notBrand.has(b.id)) continue
-    const fit = planBrandFit(b, ctx.rates)
+    const fit = planBrandFit(b)
     const { state, holds } = supplyStateOf(b, fit, ctx.q)
     if (state === 'off' || state === 'reached') { spotOf.set(b.id, state === 'off' ? 'off' : 'other'); continue }
     if (known.has(b.id)) { dealBrands += 1; spotOf.set(b.id, 'known'); continue }
@@ -3228,7 +3232,7 @@ async function deadWeightCandidates(pre?: { brands: PlanBrand[]; rates: AcceptRa
     onFile: number; contacted: boolean; queued: number; plannedLabel: string | null
   }> = []
   for (const b of live) {
-    const f = planBrandFit(b, ctx.rates)
+    const f = planBrandFit(b)
     const mark = log[b.id]
     const why = deadWeightOf({
       notUs: b.usStatus === 'no', closed: !!f.bizNote, seller: looksLikeSeller(b.name, b.notes),
@@ -3289,7 +3293,7 @@ async function fitArchiveCandidates() {
     // In talks — a reply, a deal, an activation — never suggested.
     if (b.targets.some(t => t.status === 'replied' || t.status === 'converted')) continue
     if (bestDealStage(b.deals.map(d => d.stage)) || b._count.activations) continue
-    const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+    const f = brandFit(b, now)
     if (!f.archiveWhy) continue
     const on = pinned.get(b.id) ?? null
     out.push({
@@ -3620,8 +3624,9 @@ function lastOutreachAt(b: PlanBrand): string | null {
   return ms ? new Date(ms).toISOString() : null
 }
 
-// One brand on the list, as the page shows it. where: on a coming day
-// (`day`), in today's list, waiting for a day, or can't go (why).
+// One brand on the list, as the page shows it. where: waiting for a day
+// (rank 1..n), or — only a brand Leo added by hand, rank 0 — on a coming
+// day (`day`), in today's list, or can't go (why).
 type BankRow = {
   rank: number; id: string; name: string; category: string | null; tier: string | null
   fit: number; label: ContactsLabel; going: number; people: PreviewPerson[]; big: boolean
@@ -3636,9 +3641,13 @@ type BankCtx = { brands: PlanBrand[]; rates: AcceptRates; q: QueueCtx; plan: Out
 // The list as it stands: Leo's hand adds still in play, then the brands a
 // Best fit day would pick by itself (bestFitEligible — never reached, not a
 // giant held back, not Skip, not too small — with someone who would go
-// out), best Brand Fit first, up to the list's number. Brands going out
-// today are spent: not a system pick any more. `day` = the day the people
-// are counted for (the week's first sending day).
+// out), best Brand Fit first, up to the list's number. It is the NEXT
+// brands (Leo, Nov 19 2026: "the next 100 ranked brands" — the list "brings
+// up the same brands over and over again"): one of the system's picks that
+// is on a coming day or going out today has left it, and the next-ranked
+// brand has its place; one Leo added stays on it, uncounted (rank 0), until
+// something goes out to it. `day` = the day the people are counted for (the
+// first coming sending day).
 function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) {
   const today = localDayKey()
   const dayStart = startOfLocalDay()
@@ -3647,7 +3656,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
   const handAt = new Map(state.hand.map(h => [h.id, h.at]))
   const inToday = (b: PlanBrand) => pinnedOn.get(b.id) === today || b.targets.some(t =>
     !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && !t.shelved && ['queued', 'drafted'].includes(t.status))
-  type Info = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; refusal: string | null; reason: string | null; isToday: boolean }
+  type Info = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; refusal: string | null; reason: string | null; where: BankRow['where']; pinned: string | null }
   const info = new Map<string, Info>()
   const cands: BankCand[] = []
   // Hand adds no longer on the list: reached since they were added, or off
@@ -3661,7 +3670,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     // On a Pass ("not now", a month): off the list until it ends. One Leo
     // added by hand keeps its place for after — it is not spent.
     if (passedNow(b)) continue
-    const f = planBrandFit(b, ctx.rates)
+    const f = planBrandFit(b)
     const isToday = inToday(b)
     let auto = !isToday && bestFitEligible(b, f, ctx.q)
     if (!hand && !auto) continue
@@ -3669,25 +3678,30 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     const p = previewBrandPicks(b, { forToday: false, dayStart, day, explicitAdd: hand })
     if (!p.people.length) auto = false
     if (!hand && !auto) continue
+    // Where it stands. One of the system's picks that is on a day already
+    // is that day's now — the list holds the next brands still waiting.
+    const pinned = pinnedOn.get(b.id) ?? null
+    const where: BankRow['where'] = isToday ? 'today'
+      : pinned ? 'day'
+      : refusal || !p.people.length ? 'cant'
+      : 'waiting'
+    if (!hand && where !== 'waiting') continue
     const label = contactLabel(b, b.contacts)
-    info.set(b.id, { b, label, people: p.people, refusal, reason: p.reason, isToday })
-    cands.push({ id: b.id, name: b.name, fit: f.score, ready: label.kind === 'ready', auto })
+    info.set(b.id, { b, label, people: p.people, refusal, reason: p.reason, where, pinned })
+    cands.push({ id: b.id, name: b.name, fit: f.score, ready: label.kind === 'ready', auto, placed: where !== 'waiting' })
   }
   const { list, autoLeft } = composeBank(cands, state)
-  const rows: BankRow[] = list.map((c, i) => {
+  // The rank counts the waiting brands only: 1 is the next brand to place.
+  let n = 0
+  const rows: BankRow[] = list.map(c => {
     const x = info.get(c.id)!
     const b = x.b
-    const pinned = pinnedOn.get(b.id) ?? null
-    const where: BankRow['where'] = x.isToday ? 'today'
-      : pinned ? 'day'
-      : x.refusal || !x.people.length ? 'cant'
-      : 'waiting'
     return {
-      rank: i + 1, id: b.id, name: b.name, category: b.category, tier: b.tier,
+      rank: x.where === 'waiting' ? ++n : 0, id: b.id, name: b.name, category: b.category, tier: b.tier,
       fit: c.fit, label: x.label, going: x.people.length, people: x.people.slice(0, 4), big: isBigBrand(b),
       how: c.how, addedAt: handAt.get(b.id) ?? null, reached: isReached(b),
-      where, day: where === 'day' ? pinned : null,
-      why: where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
+      where: x.where, day: x.where === 'day' ? x.pinned : null,
+      why: x.where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
       linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
     }
   })
@@ -3798,7 +3812,7 @@ function againOf(b: PlanBrand, opts: { today: string; q: QueueCtx; ex: AgainExtr
     contactId: t.contactId, status: t.status, shelved: t.shelved, shelvedHow: t.shelvedHow,
     sentAt: t.sentAt, emailedAt: t.emailedAt, emailSentAt: t.emails?.[0]?.sentAt ?? null, updatedAt: t.updatedAt,
   }))
-  const f = opts.rates !== undefined ? planBrandFit(b, opts.rates) : null
+  const f = opts.rates !== undefined ? planBrandFit(b) : null
   const off = !!b.stoppedAt || !!b.passedAt || b.doNotEmail || b.usStatus === 'no' || passedNow(b) ||
     heldGiant(b, opts.q) || !!f?.ruledOut || !!f?.bizNote
   // The queue's own test (abroadTest): based abroad by its hq, else by where
@@ -3850,7 +3864,7 @@ function againRows(brands: PlanBrand[], opts: { today: string; ex: AgainExtras; 
     if (!isReached(b)) continue
     const a = againOf(b, { today: opts.today, ex: opts.ex, q: opts.q, rates: opts.rates })
     if (!a.ok) continue
-    const f = planBrandFit(b, opts.rates)
+    const f = planBrandFit(b)
     const n = againCount(b)
     const pin = pinnedOn.get(b.id) ?? null
     rows.push({
@@ -4091,6 +4105,8 @@ const CONTACT_CAP_PER_BRAND = 25
 // can remove and those already written to (kept, counted); and roster
 // brands that are sellers. Also the last clean-up, for Undo.
 const LI_CLEANUP_KEY = 'liCleanupLast'
+// The last removePeople, kept for its Undo (remove-people.ts).
+const PEOPLE_REMOVED_KEY = 'peopleRemovedLast'
 async function liCleanupCandidates() {
   const contacts = await prisma.contact.findMany({
     where: { source: 'linkedin', brand: { passedAt: null } },
@@ -6530,7 +6546,7 @@ const handlers: Record<string, Handler> = {
             .filter(b => !!b && !(b.passedTodayAt && b.passedTodayAt >= startOfDay))
             // short: false — the fill keeps the list's own order (its
             // ties already put ready brands first).
-            .map(b => ({ b, fit: planBrandFit(b, rankRates).score, short: false, big: isBigBrand(b) }))
+            .map(b => ({ b, fit: planBrandFit(b).score, short: false, big: isBigBrand(b) }))
         })()
       : autoDayRanked(theme, await loadPlanBrands(prisma,
           { ...BEST_FIT_BRAND_WHERE, ...notPassedToday(), ...(isCategoryTheme(theme) ? { category: theme } : {}) },
@@ -7252,8 +7268,7 @@ const handlers: Record<string, Handler> = {
       if (at !== bt) return at - bt
       return a.name.localeCompare(b.name)
     })
-    // Brand Fit needs the category accept rates (reachable people come
-    // from the contacts already loaded).
+    // Only when the page asks for Brand Fit (fit: true).
     const rates: AcceptRates | null = fit && sorted.length ? await recentAcceptRates() : null
     const facts = coverage && sorted.length ? await readCoverFacts(prisma) : null
     const now = new Date()
@@ -7267,7 +7282,7 @@ const handlers: Record<string, Handler> = {
       const last = (xs: Date[]) => xs.length ? new Date(Math.max(...xs.map(d => d.getTime()))) : null
       const { targets, contacts, ...rest } = b
       const buyers = contacts.filter(c => isBuyerTitle(c.title))
-      const f = rates ? brandFit(b, contacts.filter(isReachable).length, rates, now) : null
+      const f = rates ? brandFit(b, now) : null
       const emailed = ts.filter(t => t.emailedAt || t._count.emails > 0).length
       const cover = facts ? brandCover({ ...b, titles: contacts.map(c => c.title) }, facts, now.getTime()) : null
       return {
@@ -7492,7 +7507,7 @@ const handlers: Record<string, Handler> = {
     ])
     const now = new Date()
     const rows = brands.filter(b => b.kind !== 'person').map(b => {
-      const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      const f = brandFit(b, now)
       return {
         id: b.id, name: b.name, category: b.category, priority: f.priority, score: f.score,
         reasons: f.reasons.map(r => ({ points: r.points, text: r.text, good: r.good })),
@@ -7540,7 +7555,7 @@ const handlers: Record<string, Handler> = {
     const last = await readRefileLog()
     const stock = buildStock(brands.map(b => {
       const ts = b.targets
-      const f = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      const f = brandFit(b, now)
       return {
         fit: { score: f.score, tooSmall: f.tooSmall, tooSmallWhy: f.tooSmallWhy, usUnknown: f.usUnknown, ruledOut: f.ruledOut, bizNote: f.bizNote, priority: f.priority },
         id: b.id, name: b.name, aka: b.aka, category: b.category, tier: b.tier,
@@ -7632,7 +7647,7 @@ const handlers: Record<string, Handler> = {
     const skipCats = new Map<string, number>()
     let readyPeople = 0
     for (const b of ctx.brands) {
-      const f = planBrandFit(b, ctx.rates)
+      const f = planBrandFit(b)
       const { state, holds } = supplyStateOf(b, f, ctx.q)
       const reachable = b.contacts.filter(isReachable).length
       if (state === 'ready') { ids.ready.push(b.id); readyPeople += Math.min(againCount(b), reachable) }
@@ -7796,7 +7811,7 @@ const handlers: Record<string, Handler> = {
     const rows = brands.map(b => ({
       id: b.id, name: b.name, aka: b.aka, website: b.website, linkedinUrl: b.linkedinUrl,
       category: b.category, day: onDays.get(b.id) ?? null,
-      fit: brandFit(b, b.contacts.filter(isReachable).length, rates, now).score,
+      fit: brandFit(b, now).score,
     }))
     rows.sort((a, b) => (a.day ?? '9999').localeCompare(b.day ?? '9999') || b.fit - a.fit || a.name.localeCompare(b.name))
     const list = rows.slice(0, Math.max(1, Math.min(200, Number(take) || 60)))
@@ -8825,7 +8840,7 @@ const handlers: Record<string, Handler> = {
     // Brand Fit with every reason, for the brand page's Fit line, and
     // whether it's on Stock take's Suggest Archive list (same exclusions
     // as fitArchiveCandidates: not archived, not in talks).
-    const fitRes = brandFit(brand, brand.contacts.filter(isReachable).length, await recentAcceptRates())
+    const fitRes = brandFit(brand)
     const inTalks = brand.targets.some(t => t.status === 'replied' || t.status === 'converted') ||
       !!bestDealStage(brand.deals.map(d => d.stage)) || (await prisma.activation.count({ where: { brandId } })) > 0
     const fit = { ...fitRes, onArchiveList: !!fitRes.archiveWhy && !brand.passedAt && !inTalks }
@@ -9665,6 +9680,137 @@ const handlers: Record<string, Handler> = {
       })
     })
     return { moved: true, ...summary }
+  },
+
+  // Take people off a brand for good (Leo, Nov 18 2026: Rogue the nicotine
+  // pouch had seven people from Rogue Fitness, another company, on it —
+  // "remove them"). Rules pure in src/lib/remove-people.ts: never someone
+  // who said they don't want to continue, was already written to, has a
+  // call or emails sent or received, is on Elizabeth's list or in
+  // Instantly (an email draft that never went out goes with the person).
+  // Without `confirm` it only names who would go, how each stands, and who
+  // stays and why. Confirm sends the preview's `expect`; a list that
+  // changed since is shown again (`stale`). One transaction, a copy kept
+  // for undoRemovePeople (the last removal only). No button: Claude runs it
+  // with node scripts/cc.mjs removePeople '{"brandId":"…","contactIds":[…]}'.
+  async removePeople({ brandId, contactIds, confirm = false, expect, __user }: any) {
+    const brand = await prisma.brand.findUnique({ where: { id: String(brandId || '') }, select: { id: true, name: true } })
+    if (!brand) throw new Error('Brand not found')
+    const asked: string[] = (Array.isArray(contactIds) ? contactIds : []).map(String).slice(0, 100)
+    if (!asked.length) throw new Error('Name the people to remove')
+    const found = await prisma.contact.findMany({
+      where: { id: { in: asked }, brandId: brand.id },
+      include: {
+        targets: {
+          include: {
+            instantly: { select: { id: true } }, emails: { select: { direction: true, status: true, sentAt: true } },
+            _count: { select: { drafts: true } },
+          },
+        },
+        _count: { select: { repOutreach: true } },
+      },
+    })
+    const rows: RemoveRow[] = found.map(c => ({
+      id: c.id, name: c.name, title: c.title, doNotContactAt: c.doNotContactAt, repOutreach: c._count.repOutreach,
+      targets: c.targets.map(t => ({
+        status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, dmSentAt: t.dmSentAt, repliedAt: t.repliedAt,
+        handDeclinedAt: t.handDeclinedAt, callAt: t.callAt, callBookedAt: t.callBookedAt,
+        emails: t.emails.filter(emailIsHistory).length, emailDrafts: t.emails.filter(e => !emailIsHistory(e)).length,
+        instantly: !!t.instantly, drafts: t._count.drafts, shelved: t.shelved,
+      })),
+    }))
+    const { go, stay, missing } = sortRemoval(asked, rows)
+    const sig = removalSig(brand.id, go)
+    const leftOnBrand = (await prisma.contact.count({ where: { brandId: brand.id } })) - go.length
+    const view = { brand, remove: go, stay, notAtBrand: missing.length, leftOnBrand, expect: sig }
+    if (!confirm) return { preview: true, ...view }
+    if (expect !== sig) return { stale: true, ...view }
+    if (!go.length) return { ok: false, removed: 0, ...view }
+
+    const goIds = go.map(g => g.id)
+    const log: RemovalLog = {
+      at: new Date().toISOString(), by: String(__user || ''), brandId: brand.id, brandName: brand.name,
+      people: found.filter(c => goIds.includes(c.id)).map(c => {
+        const t = c.targets[0]
+        return {
+          name: c.name, title: c.title, email: c.email, phone: c.phone, location: c.location,
+          linkedinUrl: c.linkedinUrl, twitterUrl: c.twitterUrl, source: c.source, externalId: c.externalId,
+          isDecisionMaker: c.isDecisionMaker, notes: c.notes, createdAt: c.createdAt.toISOString(),
+          target: t ? { fitScore: t.fitScore, assignedTo: t.assignedTo, passed: t.status === 'passed', shelved: t.shelved, shelvedHow: t.shelvedHow } : null,
+        }
+      }),
+    }
+    const v = JSON.stringify(log)
+    // An invite or email that landed between the read above and now keeps
+    // its person: checked again inside the delete's own transaction.
+    const done = await prisma.$transaction(async tx => {
+      const touched = await tx.target.count({
+        where: {
+          contactId: { in: goIds },
+          OR: [
+            { sentAt: { not: null } }, { emailedAt: { not: null } }, { dmSentAt: { not: null } }, { repliedAt: { not: null } },
+            { handDeclinedAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted', 'declined'] } },
+            { emails: { some: { OR: [{ direction: 'in' }, { sentAt: { not: null } }, { status: { in: ['sent', 'replied', 'received'] } }] } } },
+          ],
+        },
+      })
+      if (touched) return false
+      await tx.contact.deleteMany({ where: { id: { in: goIds }, brandId: brand.id, doNotContactAt: null } })
+      await tx.setting.upsert({ where: { key: PEOPLE_REMOVED_KEY }, create: { key: PEOPLE_REMOVED_KEY, value: v }, update: { value: v } })
+      return true
+    })
+    if (!done) return { stale: true, ...view }
+    // A freed spot goes to the next person at the brand.
+    try { await reconcileBrandTargets(brand.id) } catch { /* non-fatal */ }
+    return { ok: true, removed: go.length, brand, people: go.map(g => g.name), stay, leftOnBrand }
+  },
+
+  // Puts the last removal back (preview first: who comes back, and who is
+  // on the brand again already). People come back with their place in the
+  // queue — set aside if they were; their drafts are written again from
+  // the templates. Never someone who has since said they don't want to
+  // continue.
+  async undoRemovePeople({ confirm = false }: any = {}) {
+    const last = readRemovalLog(await readJsonSetting<unknown>(prisma, PEOPLE_REMOVED_KEY, null))
+    if (!last || last.undone) throw new Error('No removal to undo')
+    const brand = await prisma.brand.findUnique({ where: { id: last.brandId }, select: { id: true, name: true, stoppedAt: true } })
+    if (!brand) throw new Error(`${last.brandName} is no longer on the dashboard`)
+    const [now, stopIx] = await Promise.all([
+      prisma.contact.findMany({ where: { brandId: brand.id }, select: { name: true, linkedinUrl: true } }),
+      loadStopIndex(),
+    ])
+    const stopped = (p: Removed) => !!stoppedMatch(stopIx, { brandId: brand.id, name: p.name, linkedinUrl: p.linkedinUrl, email: p.email })
+    const there = last.people.filter(p => alreadyBack(p, now, profileSlug))
+    const saidNo = last.people.filter(p => !there.includes(p) && stopped(p))
+    const back = last.people.filter(p => !there.includes(p) && !saidNo.includes(p))
+    const view = {
+      brand: { id: brand.id, name: brand.name }, at: last.at,
+      back: back.map(p => ({ name: p.name, title: p.title })),
+      alreadyThere: there.map(p => p.name), saidNo: saidNo.map(p => p.name),
+    }
+    if (!confirm) return { preview: true, ...view }
+    for (const p of back) {
+      // externalId is unique across the dashboard: given back only if free.
+      const taken = p.externalId ? await prisma.contact.findUnique({ where: { externalId: p.externalId }, select: { id: true } }) : null
+      const c = await prisma.contact.create({
+        data: {
+          brandId: brand.id, name: p.name, title: p.title, email: p.email, phone: p.phone, location: p.location,
+          linkedinUrl: p.linkedinUrl, twitterUrl: p.twitterUrl, source: p.source || 'manual', externalId: taken ? null : p.externalId,
+          isDecisionMaker: !!p.isDecisionMaker, notes: p.notes, createdAt: p.createdAt ? new Date(p.createdAt) : undefined,
+        },
+      })
+      if (p.target && !brand.stoppedAt) {
+        await prisma.target.create({
+          data: {
+            brandId: brand.id, contactId: c.id, fitScore: p.target.fitScore, assignedTo: p.target.assignedTo,
+            ...(p.target.passed ? { status: 'passed' as const } : {}), shelved: p.target.shelved, shelvedHow: p.target.shelvedHow,
+          },
+        })
+      }
+    }
+    if (back.length) { try { await reconcileBrandTargets(brand.id) } catch { /* non-fatal */ } }
+    await writeJsonSetting(prisma, PEOPLE_REMOVED_KEY, { ...last, undone: new Date().toISOString() })
+    return { ok: true, back: back.length, brand: view.brand, people: back.map(p => p.name), alreadyThere: view.alreadyThere, saidNo: view.saidNo }
   },
 
   // -------- per-brand target cap --------
@@ -11337,7 +11483,7 @@ const handlers: Record<string, Handler> = {
     let hiddenSmall = 0
     const cands: Cand[] = brands
       .filter(b => !isReached(b) && !b.passedAt && !passedNow(b) && !b.doNotEmail && !inConversation(b) && !heldGiant(b, q) && !pinnedOn.has(b.id) && !excluded.has(b.id) && !inTodayQueue(b) && !onTodayCol.has(b.id))
-      .map(b => ({ b, f: planBrandFit(b, rates) }))
+      .map(b => ({ b, f: planBrandFit(b) }))
       .filter(({ f }) => !f.ruledOut)
       .map(({ b, f }) => ({ b, f, fit: f.score, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
       .filter(c => c.people.length > 0)
@@ -11672,22 +11818,30 @@ const handlers: Record<string, Handler> = {
   },
 
   // ── Outreach → Week plan ──────────────────────────────────────────
-  // The list (Setting weekBank) and the week it is spent on. week = 'this'
-  // | 'next' | a Monday key; the first week offered when it's missing (this
-  // week while it has a sending day after today, else next week).
+  // The list (Setting weekBank) and the days it is spent on: every coming
+  // sending day of this week and next (Leo, Nov 19 2026: one table, a day
+  // picked once at the top). week = 'this' | 'next' | a Monday key narrows
+  // the days to that week (the spread works a week at a time).
   async weekBank({ week }: any = {}) {
     const ctx = await loadBankCtx()
     const today = localDayKey()
     const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
-    const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
+    const one = week ? weeks.find(w => w.which === week || w.start === week) ?? null : null
+    const pick = one ?? weeks[0]
+    const keys = one ? one.days : weeks.flatMap(w => w.days)
+    const weekOf = new Map(weeks.flatMap(w => w.days.map(d => [d, w] as const)))
     const [marks, spreadLog, ex] = await Promise.all([
       readListDayMarks(), readWeekSpreadLog(),
       loadAgainExtras(ctx.brands.filter(isReached).map(b => b.id)),
     ])
     const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
     const brandById = new Map(ctx.brands.map(b => [b.id, b]))
-    const days = weekColumns(pick.days, cur, marks, brandById)
-    const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    const fitOf = (id: string) => { const b = brandById.get(id); return b ? planBrandFit(b).score : null }
+    const days = weekColumns(keys, cur, marks, brandById).map(d => ({
+      ...d, week: weekOf.get(d.date)?.start ?? pick.start, which: weekOf.get(d.date)?.which ?? pick.which,
+      pinned: d.pinned.map(p => ({ ...p, fit: fitOf(p.id) })),
+    }))
+    const bank = buildBank(ctx, ctx.state, { day: keys[0] })
     // Reach out again: reached before, a decision maker never contacted.
     const again = againRows(ctx.brands, { today, ex, q: ctx.q, rates: ctx.rates, plan: ctx.plan })
     // Hand adds that left the list (reached since, archived…) leave the
@@ -11702,6 +11856,12 @@ const handlers: Record<string, Handler> = {
       .filter((b): b is PlanBrand => !!b && !isReached(b) && !b.passedAt)
       .map(b => ({ id: b.id, name: b.name, category: b.category, at: ctx.state.removed[b.id] }))
       .sort((a, b) => b.at.localeCompare(a.at))
+    // On a Pass now: off the list until it ends — listed so one can be
+    // brought back sooner. Soonest back first.
+    const passed = ctx.brands
+      .filter(b => passedNow(b) && !b.passedAt && !b.stoppedAt && !b.doNotEmail)
+      .map(b => ({ id: b.id, name: b.name, category: b.category, until: b.passedUntil!.toISOString(), reached: isReached(b) }))
+      .sort((a, b) => a.until.localeCompare(b.until))
     return {
       today,
       weeks: weeks.map(w => ({ start: w.start, which: w.which, days: w.days, labels: w.days.map(dayLabel) })),
@@ -11712,7 +11872,7 @@ const handlers: Record<string, Handler> = {
         hand: bank.rows.filter(r => r.how === 'hand').length,
         waiting: bank.rows.filter(r => r.where === 'waiting').length,
         onDays: bank.rows.filter(r => r.where === 'day').length,
-        removed,
+        removed, passed,
       },
       spreadLast: spreadLog && spreadLog.days.some(d => d.date > today)
         ? { at: spreadLog.at, days: spreadLog.days.filter(d => d.date > today).map(d => ({ date: d.date, added: d.added.length })) }
@@ -11722,7 +11882,7 @@ const handlers: Record<string, Handler> = {
         due: again.filter(r => r.state === 'due').length, late: again.filter(r => r.state === 'late').length,
         fromDays: AGAIN_FROM_DAYS, dueDays: AGAIN_DUE_DAYS,
       },
-      cap: DAILY_SEND_LIMIT,
+      cap: DAILY_SEND_LIMIT, passDays: PASS_DAYS,
       linkedin: { limit: LINKEDIN_WEEK_LIMIT, sentLast7: cur?.linkedinWeek?.sentLast7 ?? 0 },
       priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
     }
@@ -11871,7 +12031,7 @@ const handlers: Record<string, Handler> = {
     ])
     let setAside = 0
     const rows = brands
-      .map(b => ({ b, f: planBrandFit(b, rates), row: planBrandRow(b, ctx) }))
+      .map(b => ({ b, f: planBrandFit(b), row: planBrandRow(b, ctx) }))
       .filter(x => { if (x.row.action === 'none') { setAside++; return false } return true })
       .sort((x, y) => Number(x.row.action !== 'add') - Number(y.row.action !== 'add') || y.f.score - x.f.score || x.b.name.localeCompare(y.b.name))
       .slice(0, 120)
@@ -12479,7 +12639,7 @@ const handlers: Record<string, Handler> = {
       .map(h => {
         const b = byId.get(h.id)
         if (!b) return null
-        const f = planBrandFit(b, rates)
+        const f = planBrandFit(b)
         return { h, f, row: planBrandRow(b, ctx) }
       })
       .filter((x): x is NonNullable<typeof x> => !!x)
@@ -12664,7 +12824,7 @@ const handlers: Record<string, Handler> = {
       recentAcceptRates(),
     ])
     const now = new Date()
-    const fitOf = new Map(facts.map(b => [b.id, brandFit(b, b.contacts.filter(isReachable).length, rates, now).score]))
+    const fitOf = new Map(facts.map(b => [b.id, brandFit(b, now).score]))
     const invites: OutcomeInvite[] = rows.map(t => ({
       brandId: t.brandId, at: t.sentAt!,
       category: t.brand.category ?? null,
@@ -14125,7 +14285,7 @@ const handlers: Record<string, Handler> = {
       const sim: PlanBrand = { ...b, targets: b.targets.map(t => (openIds.has(t.id) ? { ...t, status: 'withdrawn' as TargetStatus } : t)) }
       const p = previewBrandPicks(sim, { forToday: false, dayStart, explicitAdd: true, day })
       if (!p.people.some(x => buyerKind(x.title))) continue
-      const f = planBrandFit(b, rates)
+      const f = planBrandFit(b)
       if (f.ruledOut || f.bizNote) continue
       const invited = b.targets.filter(wasInvited)
       const lastAt = invited.map(t => t.sentAt).filter(Boolean).sort((x, y) => y!.getTime() - x!.getTime())[0] ?? null
@@ -15575,7 +15735,7 @@ const handlers: Record<string, Handler> = {
       })).concat(invited.map(p => ({ invitedAt: new Date(p.invitedAt), acceptedAt: null, accepted: false, repliedAt: null, replied: false, callBookedAt: null, callAt: null }))),
       deal ? { stage: deal.stage, createdAt: deal.createdAt } : null)
       const v = visitBy.get(b.id)
-      const fit = brandFit(b, b.contacts.filter(isReachable).length, rates, now)
+      const fit = brandFit(b, now)
       // The stage: set by hand on the bar, or read from what happened.
       const marks = [
         ...(handBy.get(b.id) ?? []),
@@ -17545,7 +17705,7 @@ const handlers: Record<string, Handler> = {
       select: { id: true, name: true, aka: true, category: true, tier: true, workPeople: true, ...FIT_SELECT,
         contacts: { select: { email: true, linkedinUrl: true } } },
     }) : []
-    const fitById = new Map(facts.map(b => [b.id, brandFit(b, b.contacts.filter(isReachable).length, rates, now)]))
+    const fitById = new Map(facts.map(b => [b.id, brandFit(b, now)]))
     const out = rows.map((r: any, i: number) => {
       const existing = matched[i]
       if (existing && !r.brandId) { link.push({ id: r.id, brandId: existing.id }); r.brandId = existing.id; r.status = 'added' }
@@ -17554,7 +17714,7 @@ const handlers: Record<string, Handler> = {
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
-          text: [r.reason, r.activation].filter(Boolean).join(' '), name: r.name, writeUp: r.reason },
+          name: r.name, writeUp: r.reason },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
       // reached = its brand carries the Reached tag (the Outreach filter);
       // a find not on the roster never does.
@@ -18618,8 +18778,8 @@ function elSize(b: ElBrand, list: ElContact[], taken: ReadonlySet<string>): { wo
   const left = repReachableLeft(elPeople(b, list), taken, brandNames(b))
   return { work, left, size: Math.min(work, left) }
 }
-function elFit(b: ElBrand, list: ElContact[], rates: AcceptRates | null): FitResult {
-  return brandFit(b, list.filter(isReachable).length, rates)
+function elFit(b: ElBrand): FitResult {
+  return brandFit(b)
 }
 const elBrandOk = (b: { kind: string | null }) => !b.kind
 // A brand nobody may reach (they said they don't want to continue).
@@ -18721,7 +18881,7 @@ async function elTemplatesNow() {
 
 // What the dashboard's brand list shows of a brand (Week plan, search).
 function elBrandCard(b: ElBrand, list: ElContact[], taken: ReadonlySet<string>, rates: AcceptRates | null, plan: Plan) {
-  const f = elFit(b, list, rates)
+  const f = elFit(b)
   const sz = elSize(b, list, taken)
   const people = elPeople(b, list).filter(p => !p.doNotContactAt && !taken.has(p.id))
   return {
@@ -18757,7 +18917,7 @@ async function elBank(plan: Plan, today: string, opts: { cat?: string | null } =
     const t = taken.get(b.id) ?? new Set<string>()
     const card = elBrandCard(b, list, t, rates, plan)
     if (!card.size) continue
-    const f = elFit(b, list, rates)
+    const f = elFit(b)
     if (f.ruledOut || f.bizNote || f.tooSmall || f.priority === 'skip') continue
     out.push({ ...card, big: isBigBrand(b) })
   }
@@ -18799,7 +18959,7 @@ const elHandlers: Record<string, Handler> = {
         g = {
           id: r.brandId, name: r.brand?.name ?? r.brandName, category: r.brand?.category ?? null,
           website: r.brand?.website ?? null, linkedinUrl: r.brand?.linkedinUrl ?? null,
-          fit: b ? elFit(b, roster.people.get(b.id) ?? [], rates).score : null,
+          fit: b ? elFit(b).score : null,
           planned: !!r.brandId && order.includes(r.brandId), from: null as string | null, rows: [] as any[],
         }
         groups.set(key, g)
@@ -18934,7 +19094,7 @@ const elHandlers: Record<string, Handler> = {
         const on = rowsOn.get(d + '|' + id) ?? 0
         const sz = elSize(b, roster.people.get(id) ?? [], taken.get(id) ?? new Set())
         return {
-          id, name: b.name, category: b.category, fit: elFit(b, roster.people.get(id) ?? [], rates).score,
+          id, name: b.name, category: b.category, fit: elFit(b).score,
           size: built ? on : sz.size + on, built, left: sz.left, stopped: !!b.stoppedAt,
         }
       }).filter(Boolean) as any[]
@@ -19122,7 +19282,7 @@ const elHandlers: Record<string, Handler> = {
       recentAcceptRates(),
       elReadState(prisma),
     ])
-    const f = elFit(b, contacts, rates)
+    const f = elFit(b)
     const mine = new Map<string, ReturnType<typeof elRowOut>[]>()
     for (const r of rows) if (r.contactId) mine.set(r.contactId, [...(mine.get(r.contactId) ?? []), elRowOut(r, today)])
     const people = repSortPeople(elPeople(b, contacts), brandNames(b)).map(p => {
