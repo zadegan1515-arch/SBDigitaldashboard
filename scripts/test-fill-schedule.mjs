@@ -12,7 +12,7 @@ const out = mkdtempSync(join(tmpdir(), 'fill-schedule-test-'))
 execSync('npx tsc src/lib/fill-schedule.ts --outDir ' + out + ' --target es2020 --module esnext --moduleResolution bundler --skipLibCheck', { stdio: 'inherit' })
 // Node wants the extension the bundler doesn't.
 for (const f of readdirSync(out)) if (f.endsWith('.js')) writeFileSync(join(out, f), readFileSync(join(out, f), 'utf8').replace(/from '\.\/([\w-]+)'/g, "from './$1.js'"))
-const { splitFillDays, fillWhy, byFit } = await import(pathToFileURL(join(out, 'fill-schedule.js')).href)
+const { splitFillDays, fillWhy, byFit, fillReason, fillFirst, fillOff, FILL_REASONS, FILL_OFF } = await import(pathToFileURL(join(out, 'fill-schedule.js')).href)
 
 let pass = 0, fail = 0
 const is = (label, got, want) => {
@@ -65,6 +65,44 @@ is('no score goes last', names([B('Unknown', null), B('Scored', 50)]), ['Scored'
 const orig = [B('A', 1), B('B', 2)]
 byFit(orig)
 is('leaves the list it was given alone', orig.map(i => i.name), ['A', 'B'])
+
+// Brands → LinkedIn run (Leo, Nov 18 2026): every brand on the run under one
+// reason — what the run is for there; going first is a tag, not a reason.
+const R = extra => fillReason({ name: 'X', brandId: 'x', ...extra })
+is('never read on LinkedIn', R({ kind: 'new', short: true, needs: true, noBuyer: true }), 'new')
+is('one he added himself, never read, is still new', R({ kind: 'new', mine: 'added' }), 'new')
+is('on the Schedule and never read is still new', R({ kind: 'new', planned: '2026-11-25', short: true }), 'new')
+is('read before, short on people', R({ kind: 'again', short: true }), 'people')
+is('read in full, still needs people — its one more read', R({ kind: 'reread', reread: true, rereadWhy: 'needs', needs: true }), 'people')
+is('read before, no buyer on file', R({ kind: 'again', noBuyer: true }), 'people')
+is('read in full before founders & events were searched', R({ kind: 'reread', reread: true, rereadWhy: 'wide' }), 'wide')
+is('…and short on people: people is the reason', R({ kind: 'reread', reread: true, rereadWhy: 'wide', short: true }), 'people')
+is('the last read went wrong', R({ kind: 'again', retry: true, issue: 'snNoLoad', short: true }), 'wrong')
+is('buyers hidden last time', R({ kind: 'again', hiddenRetry: true }), 'wrong')
+is('has its people, due again', R({ kind: 'again' }), 'due')
+is('reached before: read last, whatever else', R({ kind: 'new', last: 'reached', short: true }), 'reached')
+is('a giant held back', R({ kind: 'again', last: 'giant' }), 'giant')
+is('a research name', fillReason({ name: 'X', research: true, asked: true }), 'research')
+is('every reason has its words, once', FILL_REASONS.map(r => r.key).sort(), ['due', 'giant', 'new', 'people', 'reached', 'research', 'wide', 'wrong'])
+is('new and not enough people lead the page', FILL_REASONS.slice(0, 2).map(r => r.label), ['New — never read', 'Not enough people'])
+
+is('first: the Schedule', fillFirst({ name: 'X', planned: '2026-11-25', mine: 'added' }, () => 'Wed, Nov 25'), 'On the Schedule Wed, Nov 25')
+is('first: he added it', fillFirst({ name: 'X', mine: 'added' }), 'You added it')
+is('first: his Week plan list', fillFirst({ name: 'X', mine: 'list' }), 'On your Week plan list')
+is('first: asked for', fillFirst({ name: 'X', research: true, asked: true }), 'Asked for by name')
+is('in its Brand Fit place', fillFirst({ name: 'X', short: true }), '')
+
+// Every other brand in play: the one thing keeping it off the run.
+is('read in full', fillOff({ why: 'resting', back: null }), 'done')
+is('resting a month', fillOff({ why: 'resting', back: '2026-12-01T00:00:00Z' }), 'wait')
+is('on his page-pick list: the pick is the way back', fillOff({ why: 'resting', back: '2026-12-01T00:00:00Z', inReview: true }), 'pick')
+is('stuck and on his list: the pick too', fillOff({ why: 'stuck', back: '2026-12-01T00:00:00Z', inReview: true }), 'pick')
+is('stuck', fillOff({ why: 'stuck', back: '2026-12-01T00:00:00Z' }), 'stuck')
+is('under the floor stays under the floor, on his list or not', fillOff({ why: 'belowFit', inReview: true }), 'belowFit')
+is('full, no page, very big', ['full', 'nopage', 'veryBig'].map(why => fillOff({ why })), ['full', 'nopage', 'veryBig'])
+is('anything else', fillOff({ why: 'mystery' }), 'other')
+is('every off line has its words, once', FILL_OFF.map(r => r.key).sort(), ['belowFit', 'done', 'full', 'nopage', 'other', 'pick', 'stuck', 'veryBig', 'wait'])
+is('what he can act on comes first', FILL_OFF[0].key, 'pick')
 
 console.log(fail ? `fill-schedule: ${fail} failed, ${pass} passed` : `fill-schedule: all ${pass} passed`)
 process.exit(fail ? 1 : 0)

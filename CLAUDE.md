@@ -32,7 +32,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
 ## Where things live
 - `public/app.html` — the whole UI. Top nav is seven groups with sub-tabs (`SUBTABS`/`GROUP_OF` in
   `showView`): Home · **Deals** (Overview / In talks / Deals board / Sponsorships — below; Leo, Nov 8 2026: "combine the Zach
-  tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
+  tab and the In talks tab … get rid of the Elizabeth tab … combine the Deals tab") · Brands (All brands / Recently added / LinkedIn run / Discover / Clarify — Stock take and Needs contacts are buttons on All brands) · Outreach (LinkedIn / Results /
   Week plan / Schedule / People / Archived / Email stats) · **Email** (Email / Instantly / Templates — below; where these
   notes say "Outreach → Email" or "Outreach → Instantly", read Email → …) ·
   **Show Board** (Overview = code lookup (`boardCodeLookup`: the whole roster by name / aka, people and archived too — it used to filter listBrands' first 500; `test-board-lookup.js`) + access-request approve/deny queue + stat tiles (total visits,
@@ -1456,6 +1456,34 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   50) — never in talks, a deal, an activation, Elizabeth's rows, and "nobody" never for Leo's own picks.
   Tests: `node scripts/test-supply.mjs`, `NODE_PATH=$(npm root -g) node scripts/test-supply.js` (page),
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-supply-e2e.js`, the wide search in `test-li-salesnav.js`.
+- **Brands → LinkedIn run** (Leo, Nov 18 2026: "can there be a list on the brands tab that specifically says how many
+  brands need a linkedin run and for what reason, not enough people, new brand, etc"; a sub-tab of its own — Claude's
+  pick, All brands already carries two cards). View `#lirun` (`LR` / `loadLiRun` / `lrRender`, `.lr-` CSS; deep link
+  `app.html#lirun`; All brands' Needs a LinkedIn fill tile links "See them by reason →"). Data = `fillNeeds({ minFit })`
+  (read-only, a READ_NAMES read): **the fill's own worklist** — `buildLiList` with the run's defaults (research list on,
+  Sales Navigator, very big skipped) at the floor the LinkedIn Fill app's run last asked with (`liFillFloor`, else 50; a
+  floor typed on the page counts for that visit) — so the big number is what the next run reads. **Every brand on it
+  sits under one reason** (pure in `src/lib/fill-schedule.ts`, `fillReason` / `FILL_REASONS`, the page's order): **New —
+  never read** (`kind: 'new'`) · **Not enough people** (read before; short on people to go out, no buyer on file, or its
+  one more read for still needing people) · **Last read went wrong** (`retry`, with what went wrong and the try) ·
+  **Founders & events never searched** (`rereadWhy: 'wide'`, has its people) · **Due for another read** (its month's wait
+  over, a parent's page still to search) · **Already reached out to** / **Giants, held back** (read last) · **Not on the
+  dashboard yet** (research names). Going first is a tag on the row, never a reason (`fillFirst`: "Goes first · On the
+  Schedule Wed, Nov 25" / You added it / On your Week plan list). The page: the number, "One run reads up to 100 brands,
+  so all N go in one run — about M minutes" (each run counts its own 100 — the script's `doneToday` starts at 0; over 100
+  = about N days), how many go first, how many have no LinkedIn page saved (the run searches; unsure ones land on his
+  pick list), the last run's word (`run`: finished / paused / went quiet, or **A run is going now — it took its list when
+  it started, so brands that joined since wait for the next run**; `live` = running and heard from in 10 min), the floor
+  box; a tile per reason (a click shows only that reason, every brand of it; else 15 a reason then Show all); a row per
+  brand (name → brand page, Reached tag, category, Fit, on file, last time's issue, under the floor, no page saved, still
+  on his page-pick list). **Not on the run** = every other brand in play under the one thing keeping it off
+  (`buildLiList({ off: true })` — never sent to the script — then `fillOff` / `FILL_OFF`): **Waiting on your page pick**
+  (on "Which LinkedIn page is theirs?" and resting or stuck; **Pick their pages →** = `cvPickPages`) · Went wrong three
+  runs in a row · Resting after a read that found nothing clear · Under Brand Fit N · Very big, skipped · No LinkedIn
+  page · Full — 25 on file · Read in full already; See them ▾ lists the names. The lines add up: "N brands in play in
+  all: X on the run, Y not" (the e2e holds every brand in play to exactly one line). No Start button there — Leo starts
+  the fill from the LinkedIn Fill app. Tests: `node scripts/test-fill-schedule.mjs`, `NODE_PATH=$(npm root -g) node
+  scripts/test-li-run.js` (page), and in `test-supply-e2e.js` (real handlers).
 - **Outreach filter on every brand list** (Leo, Oct 18 2026: "anywhere on the site where i sort brands … a filter [for]
   outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
   Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands

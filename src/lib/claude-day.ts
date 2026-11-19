@@ -15,7 +15,7 @@
 // the read-only handlers by its whole name.
 const READ_VERB = /^(?:get|list|search|find|read|load|preview|count)[A-Z]/
 const READ_NAMES = new Set(['claudeDay', 'dayRecap', 'weeklyScore', 'staleDeals', 'todaySendList', 'zachTodo', 'categoryReach', 'categoryBrands',
-  'categoryCoverage', 'outcomeTable', 'fillSchedule', 'liRunDetail', 'linkedinPeople', 'suggestForDay', 'sentByCompany', 'secondTryBrands',
+  'categoryCoverage', 'outcomeTable', 'fillSchedule', 'fillNeeds', 'liRunDetail', 'linkedinPeople', 'suggestForDay', 'sentByCompany', 'secondTryBrands',
   'boardCodeLookup', 'sponsorUrl', 'segmentsOverview', 'audienceEventStats', 'appVersion', 'researchList', 'planDayChoices', 'nextBestBrands',
   'staleInvites', 'repliedOverview', 'buyerCoverage', 'brandLookup', 'brandTimeline', 'brandStock', 'brandPlanLine', 'scheduleStamp',
   'suMatchQueue', 'sheetStatus', 'whoAmI', 'me', 'findDuplicates', 'sponsorReport', 'search', 'checkEmailReplies',
