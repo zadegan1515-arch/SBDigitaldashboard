@@ -17494,7 +17494,7 @@ const handlers: Record<string, Handler> = {
       const cat = isCategoryKey(raw) ? raw : guessCategory(r.name, r.category)
       const g = fit ? gradeFromFit(fit) : gradeDiscovery(
         { category: cat, signals: r.signals, hasParent: !!parentOf(r.name, null), giant: giantOf({ name: r.name }),
-          text: [r.reason, r.activation].filter(Boolean).join(' '), name: r.name, writeUp: r.reason },
+          name: r.name, writeUp: r.reason },
         { priority: categoryPriority(cat), acceptRate: rateOrNull(rates, cat), now })
       // reached = its brand carries the Reached tag (the Outreach filter);
       // a find not on the roster never does.
