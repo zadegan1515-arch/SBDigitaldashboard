@@ -511,31 +511,45 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   up before … then … randomly put them into the days for the week which i should be able to move between days"; his picks:
   a **bank spent week by week**, an **even mix of rank**, a spread day takes **only brands from the list**). Rules pure in
   `src/lib/week-bank.ts` (`node scripts/test-week-bank.mjs`); `wp*` / `WP` in app.html (`#weekplan`, tab between Results
-  and Schedule). **Layout** (Leo, Oct 18 2026, third pass: "i want the brands to be the entire page … make it easier for
-  brands that i add"): the brands fill the page as a grid of big cards (`.wp-grid`) in three parts — **Added by you**,
-  **Reach out again** (below), **Top by Brand Fit** (40, then Show more) — and the week is a **strip of day tiles**
-  (`#wp-bar`, `wpRenderStrip`: name, how it fills, n / cap, meter, its brands, open spots) that sticks under the header;
-  once stuck it goes slim (`wpBarFit`: names and the last-spread line hidden; the height it gives up stays as its bottom
-  margin, so the list never moves). A tile click opens that day **over the list** (`#wp-dayopen`, absolute under the bar,
-  `wpRenderOpen`: its cards `wpDayCard` with → <day> / ↩ Back to list, Only my list / Let Best fit fill; ✕ or Esc closes);
-  the spread's preview shows there too. It takes the room left on screen under the bar and scrolls inside to its last
-  brand (Leo, Oct 20 2026: "when u click on a day u cant scroll down a lot" — it was 62vh and ran off the screen):
-  `wpOpenFit` on every draw / scroll / resize, its name and ✕ stick at its top, its scroll stays its own while it fits;
-  opened low on the page, `wpOpenRoom` brings the bar up to where it sticks first (ending a refresh's keep-my-place hold,
-  `placeEnd`), and a fresh "Put N brands · Undo it" line stays on the slim bar (`.wp-last.fresh`). One big card per brand (`wpCardHtml`: rank, name, Brand Fit box, category,
-  people, contacts, Reached tag, where it is) with a **button per day** (lit = it's on that day; another day moves it, the
-  lit one takes it off) and **Remove**; drag works card → tile (or the open day), tile name / day card → another tile,
-  day card → the list. The search box / category menu (static, never redrawn) turn the page into results: a brand on the
-  list shows its list card, one due again its reach-again card, else + Add to list / Add anyway / Added ✓ **and a button
-  per day** (`wpAddDay` = weekBankAdd then planAddBrands — on the list and on that day in one click); a category: Add the
-  top N, ticks; × Back to your list. **The Outreach filter** (`reachSelect('weekplan')`, the site's Reached out / Not
-  reached out, `row.reached` = isReached) runs over the list, Reach out again and search / category results; status chips
-  All / Waiting / On a day / In today's list / Can't go yet (a card acted on stays until the filter changes, `WP.stick`).
-  **No glitches** (`wpDo`): every change shows at once on the page's own copy, the buttons of a brand being saved wait
-  (`WP.pending`), and the page reads `weekBank` once the last change is answered (`wpRead`, dropped if another change
-  started meanwhile); a refusal says why and that read puts the truth back; the card a click was on is held where it is
-  on screen through every redraw (`wpHold` / `wpUnhold`). A brand removed stays in its place as "Taken off your list ·
-  Undo" for 15 s (`WP.gone`, Undo = `weekBankPutBack`). **Reach out again** (Leo, Oct 18 2026: "recommend for me to reach
+  and Schedule). **Redone Nov 19 2026** (Leo: "it's really crowded, and it brings up the same brands over and over again.
+  I want a list, and I want it to be easy to add, for each day, the next 100 ranked brands, their score, and their category
+  … separate by category or just separate by 1 through 100. I can press pass … the head banner at the top of it comes down
+  and covers some of the page"; his picks: **pick the day once** — every row has one + Add — and **Reach out again in a
+  view of its own**). **The list is the NEXT brands**: `buildBank` holds only brands still waiting — one of the system's
+  picks that is on a coming day or in today's list has left it and the next-ranked brand has its place (`composeBank`'s
+  `placed`; on Nov 19, 21 of his 100 were already dealt with and still shown); a brand he added by hand stays on it while
+  it sits on a day or can't go, uncounted (`rank` 0 — the page's "Added by you, not waiting" fold); `rank` counts waiting
+  brands only. `weekBank` (no week) returns **every coming sending day of this week and next** (`days[]` each with `week` /
+  `which`, its pinned brands with `fit`), `bank.passed` (brands on a Pass now, soonest back first) and `passDays`;
+  `weekBank({ week })` narrows the days to one week. **The page** (nothing hangs over the list — the old week bar, day
+  tiles, the day that opened over the list, cards, status chips and drag-and-drop are gone): the title with **✦ Fill this /
+  next week for me** (the spread, for the picked day's week) and "Last fill · Undo it"; a **row of days** (`#wp-days`,
+  `data-wppick`: n / cap, a meter, open spots, brands; "This week" / "Next week" when both show) — the first with room is
+  picked (`wpPickDay`, `WP.day`), and it scrolls away with the page; then two columns (`.wp-box` / `.wp-cols`, by container
+  width: under 1,240px of room the day sits over the list and nothing sticks, under 760px each row restacks): **the table**
+  (`#wp-list`, a grid per row `.wp-row` so headings and rows share fixed columns — never a content-sized column; only its
+  heading line `.wp-head` sticks under the top bar): # · Brand (tags only when they say something: **yours**, big, Thin ·
+  n reachable, the Reached tag) · Score · Category · Would go · **+ Tue 24** (`wpAddBtn`, the picked day — `wpPlace` →
+  planAddBrands) · **Pass** (one click, a month — `wpPass` → passBrandToday) · ▾ (asks in the row: **Remove for good** →
+  weekBankRemove); and **the day beside it** (`#wp-rail`, sticky beside the list, its own scroll: ‹ › other days, n / cap,
+  its brands each with × (planRemoveBrand — back on the list) and **Move…** (another day = planMoveBrand, or Pass, which
+  asks first), and "Only what I put here" / "Let Best fit fill the open spots" = setListDay). **Views** (`#wp-views`,
+  `WP.view`): **1–N** by rank · **By category** (the same brands under a heading per category in Category-priority order,
+  the # its place overall; "See all of X →" or the category menu `#wp-cat` — shown only here — opens that category's whole
+  ranking, `weekBankBrowse`, with the Outreach filter) · **Reach out again (N)** (its own table: last outreach, due / late,
+  who was never contacted, + day = `reachAgain`, then "On <day> ✓ · Take off", Pass; 25 then Show more). **Search** (the
+  box, never redrawn) shows results in the same table: a brand waiting on the list shows its list row, one due again
+  reaches out again, else + day (weekBankAdd then planAddBrands — on his list and on that day) and **Save to list**
+  (weekBankAdd alone), "Anyway →" for a giant / a reached brand (a click, never Enter; Enter puts a plain add on the picked
+  day). **Rows stay under the mouse**: a row acted on keeps its place as "On Tue Nov 24 ✓ · Undo" / "Passed for a month —
+  back Dec 19 · Undo" / "Taken off this list · Undo" (`WP.gone`, `wpGhost`, `wpGhostRow`) and leaves only once it's 15 s
+  old **and the mouse is off the table** (`WP.over`, `wpPrune`) — a quick second click never lands on the next brand; the
+  next-ranked brand comes in at the end. Every change shows at once and the page reads `weekBank` when the last one is
+  answered (`wpDo`; `fail` takes back what the page showed; a refusal says why). Folds under the list: Added by you, not
+  waiting · Passed — back by themselves (**Bring back now** = passBrandToday off) · Removed for good (Put back). "Show the
+  next [100]" = `weekBankSize`. The fill's preview (`#wp-pv`) is part of the page, above the list — Shuffle again, Put
+  them on the days, Cancel / Esc.
+  **Reach out again** (Leo, Oct 18 2026: "recommend for me to reach
   out to brands again if there are decision makers who i did not reach out to yet, also if i reach out to a brand again
   it should be around 1 to 2 weeks later"; rules pure in `src/lib/reach-again.ts`, `node scripts/test-reach-again.mjs`):
   `weekBank.again` (`againRows` / `againOf` in route.ts) = brands reached before, **nobody replied** (Leo: "if someone has
@@ -552,19 +566,21 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   America" = the US — else `Contact.location`; `basedAbroad` = `Brand.hq`, else more people on file located abroad than
   in the US; not known = the US. Left out people are counted, "N outside the US left out"; at a company based abroad
   people in the US go first; `loadAgainExtras` reads locations, hq, calls / talks, deals and DMs). **Due** days
-  7–14, **late** after (still listed, late first). The card: when, the last outreach, the people never contacted, a
-  button per day → `reachAgain({ brandId, date, contactIds? })`: refuses with why (`againWhyText`; under a week, resting,
+  7–14, **late** after (still listed, late first). The view's + day →
+  `reachAgain({ brandId, date, contactIds? })`: refuses with why (`againWhyText`; under a week, resting,
   the day full) before writing; else up to the brand's opening number of them (`againCount`) get a waiting row (new, or
   next in line brought back), are **chosen** (`noteChosen` — chosen people go first and all go, though the brand has
   invites out, which a plain re-add never sends past) and the brand is pinned on that day (`planAddCore`; onto today it
-  queues them now). Its lit day / ↩ / drag use planMoveBrand / planRemoveBrand like any card. The Schedule's **Ready for a
-  second try** fold stays (its own stricter rule: withdraw invites 21+ days old first). **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added
-  (search box = `searchPlanBrands` for the week's first day; Browse a category = `weekBankBrowse`, Add the top N / ticks;
-  a giant's Add anyway OKs it, `okGiants`) + the brands a Best fit day would pick by itself (`bestFitEligible`, someone
-  would go out, not going out today), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready
-  before short), up to its number (`weekBankSize`, 10–300, default 100; hand adds count toward it). It is worked out on
-  every read: a brand reached drops out and the next one comes in. × = `weekBankRemove` (remembered — the list never puts
-  it back; on a row already on a day it asks and takes it off that day too, `offDays`); Put back = `weekBankPutBack`. A
+  queues them now). Take off and the day's Move… use planRemoveBrand / planMoveBrand like any brand on a day. The
+  Schedule's **Ready for a second try** fold stays (its own stricter rule: withdraw invites 21+ days old first).
+  **The list** (Setting `weekBank` = { size, hand, removed }; `buildBank` in route.ts) = brands Leo added (search box =
+  `searchPlanBrands` for the picked day; a category's ranking = `weekBankBrowse`; a giant's Anyway OKs it, `okGiants`) +
+  the brands a Best fit day would pick by itself (`bestFitEligible`, someone would go out, not going out today, not on a
+  coming day), **best Brand Fit first** (`compareBank`: fit, then ready, then name — not Ready before short), up to its
+  number (`weekBankSize`, 10–300, default 100; his waiting adds count toward it). It is worked out on every read: a brand
+  reached, put on a day or passed drops out and the next one comes in. Remove for good = `weekBankRemove` (remembered — the
+  list never puts it back; on a brand already on a day it asks and takes it off that day too, `offDays`); Put back =
+  `weekBankPutBack`. A
   hand add leaves once something goes out to it after it was added (`handSpent`) or it's archived / do-not-email / not US /
   in talks / stopped (pruned on the next `weekBank` read). Advisory-locked writes (`updateBankState`). **The week**:
   `planWeeks` = this week (Mon–Sun, New York) while it has a sending day after today, and next week; today is never a
@@ -580,10 +596,9 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   getOutreachPlan's rows (`list: true`, offTheme 0), getTodayQueue (`listDay`; its fill only for Fill to 30 — `__fill`
   from fillToday — and then from the list, its order; Ready if you have room = the list), Plan my week (`WeekDayIn.list`
   → source `list`, nothing added), the morning roll treats it like a Best fit day (what was only shown goes back);
-  its Fill box / suggestForDay offer the list (`bankSuggestRows`, `data.list`). `setListDay` = **Keep it to my list** /
-  **Let Best fit fill open spots** (Week plan's columns; the Schedule's day ⋯). Moving on the page = the Schedule's
-  handlers: Move to… / drag between days (`planMoveBrand`), × and Off the days (`planRemoveBrand`), Put on… / drag a list
-  row onto a day (`planAddBrands`). The Schedule shows a list day with a **Week list** tag and no category menu; the
+  its Fill box / suggestForDay offer the list (`bankSuggestRows`, `data.list`). `setListDay` = **Only what I put here** /
+  **Let Best fit fill the open spots** (the day beside Week plan's list; the Schedule's day ⋯). Moving on the page = the
+  Schedule's handlers (`planAddBrands`, `planMoveBrand`, `planRemoveBrand`). The Schedule shows a list day with a **Week list** tag and no category menu; the
   LinkedIn tab says "Today takes only your week list". Tests: `node scripts/test-week-bank.mjs`, `NODE_PATH=$(npm root -g)
   node scripts/test-week-plan.js` (page), `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-week-plan-e2e.js`.
 - **The Reached tag** (Leo, Oct 18 2026: "all over the site for any brand that has been reached out to i want a tag that
@@ -739,7 +754,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   "N brands don't fit … Make the day match". **Category priority** (Setting `categoryPriority` over
   `DEFAULT_CATEGORY_PRIORITY`, `getCategoryPriority` / `setCategoryPriority`, More ▾ → Category priority… modal
   `#cp-scrim`): Top +30 / Middle +15 / Low 0 / Skip 0 and never picked by itself (a hand add still works).
-  **Pass = a month off** (Leo, Nov 16 2026: "if i dont want a brand can i pass them for a month"; it was two weeks since Oct 7 2026 — "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × **Not now** on any day's automatic row and ⋯ **Pass for a month** on a planned card, brand page Take off today, **Week plan's Pass · a month** — on a list card's status line and an open day's card, `wpPass`: one click on a waiting brand, on a day it asks first; the card stays 15 s as "Passed for a month — back <day> · Undo", Undo = the Pass lifted and back on the day it was on; Remove stays "for good") sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (30; a Pass given before keeps its own date; the page words it from `PASS_WORD` / `passToast`, the reply and `getOutreachPlan.queueRules` carry `passDays`), un-stamps today's people and unpins it from coming days; **off the Week plan list until it ends** (`buildBank` — one Leo added by hand too, still his after; `weekBankAdd` ends a Pass like any hand add, `unpassed` in its reply); `notPassedToday()` / `passedNow()` / `notOnPass()` keep it out of Best fit, category rotation, every Schedule day's rows, the morning roll (`CarryFacts.passedUntil` → "Passed until …"), `queuePlannedToday`, Fill to 30, Plan my week, suggestForDay and nextBestBrands until then (a brand shown on a later day used to carry in and have its Pass ended by the queue). A hand add (planAddBrands, queueBrandTargets) clears it. **Off queue** (a LinkedIn row's company-wide button, `unqueueBrand`) is **today only** (Leo, Oct 12 2026): off today's plan, unsent people back to waiting (nothing shelved), `passedTodayAt` — back tomorrow. A brand that already sent someone today, on its first day, is pinned **first on the next sending day** (its one day for the rest — `restOn`, named in the toast); before, nothing ever sent its rest. The same for every way off today (second review, Oct 13 2026 — `pinRestOfSitting`): the Schedule's × (`planRemoveBrand`; the toast says "the rest of it goes out <day>", not "back tomorrow"), Move to → off the schedule (`planMoveBrand`), and closing today as an extra sending day (`setExtraSendingDay`, `restOn` in the reply). `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
+  **Pass = a month off** (Leo, Nov 16 2026: "if i dont want a brand can i pass them for a month"; it was two weeks since Oct 7 2026 — "when i pass on a brand it should not show up in the outreach tab again for at least two weeks"): `passBrandToday` (LinkedIn card **Pass brand**, Brands not reached yet **Pass**, the Schedule's × **Not now** on any day's automatic row and ⋯ **Pass for a month** on a planned card, brand page Take off today, **Week plan's Pass** — on every row and in the day's Move… menu, `wpPass`: one click on a waiting brand, on a day it asks first; the row stays as "Passed for a month — back <day> · Undo", Undo = the Pass lifted and back on the day it was on; Remove for good sits under the row's ▾) sets `passedTodayAt` + `Brand.passedUntil` = now + `PASS_DAYS` (30; a Pass given before keeps its own date; the page words it from `PASS_WORD` / `passToast`, the reply and `getOutreachPlan.queueRules` carry `passDays`), un-stamps today's people and unpins it from coming days; **off the Week plan list until it ends** (`buildBank` — one Leo added by hand too, still his after; `weekBankAdd` ends a Pass like any hand add, `unpassed` in its reply); `notPassedToday()` / `passedNow()` / `notOnPass()` keep it out of Best fit, category rotation, every Schedule day's rows, the morning roll (`CarryFacts.passedUntil` → "Passed until …"), `queuePlannedToday`, Fill to 30, Plan my week, suggestForDay and nextBestBrands until then (a brand shown on a later day used to carry in and have its Pass ended by the queue). A hand add (planAddBrands, queueBrandTargets) clears it. **Off queue** (a LinkedIn row's company-wide button, `unqueueBrand`) is **today only** (Leo, Oct 12 2026): off today's plan, unsent people back to waiting (nothing shelved), `passedTodayAt` — back tomorrow. A brand that already sent someone today, on its first day, is pinned **first on the next sending day** (its one day for the rest — `restOn`, named in the toast); before, nothing ever sent its rest. The same for every way off today (second review, Oct 13 2026 — `pinRestOfSitting`): the Schedule's × (`planRemoveBrand`; the toast says "the rest of it goes out <day>", not "back tomorrow"), Move to → off the schedule (`planMoveBrand`), and closing today as an extra sending day (`setExtraSendingDay`, `restOn` in the reply). `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-pass-e2e.js`.
   **Betting set aside** (Leo, Oct 7 2026: "put all the betting aside for now and not have them in any outreach"): `betting: 'skip'` in `DEFAULT_CATEGORY_PRIORITY` (brand-fit.ts) — never auto-picked, and nextBestBrands leaves Skip categories out; a hand add still works. Put it back with Category priority.
   **Queue rules** (Leo, Oct 12 2026: "i dont want brand i have already reached out to to be in the queue
   and i also dont want to reach out to super big brands yet"; rules pure in `src/lib/queue-rules.ts`,
@@ -1460,7 +1475,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   outreached to meaning that we have sent a request to at least one person there"): one dropdown **Outreach: Any /
   Reached out (N) / Not reached out (N)** (`reachSelect` / `reachOk` / `REACH_F` / `REACH_DRAW` in app.html) on All brands
   (there a row of buttons in the filter panel, `data-brreach`), Stock take (a lane's brand list, "Brands (3 of 40)"), Discover (reset by a tab change), Outreach → People, Week plan's
-  browse a category (Add the top N follows it) and the Schedule's category drill-in. Reached out = **the Reached tag's
+  one-category ranking and search results, and the Schedule's category drill-in. Reached out = **the Reached tag's
   rule** (`isReached` / `REACHED_WHERE` in route.ts, which `reachedBrands` reads too): an invite ever, an accept logged
   from LinkedIn, a hand or machine email — so a brand with the purple tag is always under Reached out. Data: listBrands
   `outreach.invited` / `emailed`, brandStock `invited` / `emailed`, linkedinPeople `reached`, listDiscoveries `reached`,

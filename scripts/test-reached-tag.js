@@ -133,8 +133,8 @@ async function main() {
   console.log('✓ Schedule');
 
   await page.evaluate(() => gotoView('weekplan'));
-  await page.waitForSelector('#wp-list [data-wprm="b1"]');
-  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b1"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Accepted Oct 14', 'Week plan');
+  await page.waitForSelector('#wp-list [data-wpid="b1"]');
+  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wpid="b1"] .rb-tag').textContent), 'Accepted Oct 14', 'Week plan');
   console.log('✓ 1 a reached brand is tagged everywhere, one not reached isn’t');
 
   // 2. Drawn before the map lands -----------------------------------------
@@ -151,7 +151,7 @@ async function main() {
   await page.evaluate(() => api('setTargetStatus', { targetId: 't1', status: 'sent' }));
   await page.waitForFunction((m) => document.querySelectorAll('#wp-list .rb-tag').length === 2, n, { timeout: 3000 });
   assert.ok(count('reachedBrands') > n, 'read again after an invite was logged');
-  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wprm="b2"]').closest('.wp-b').querySelector('.rb-tag').textContent), 'Outreached Oct 17');
+  assert.equal(await page.evaluate(() => document.querySelector('#wp-list [data-wpid="b2"] .rb-tag').textContent), 'Outreached Oct 17');
   console.log('✓ 3 logging an invite tags the brand without a reload');
 
   assert.deepEqual(errors, [], 'no page errors: ' + errors.join(' | '));

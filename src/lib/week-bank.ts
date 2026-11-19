@@ -102,7 +102,11 @@ export function handSpent(addedAt: string, lastOutreachAt: string | null): boole
 
 // One brand the list may hold. auto = the system's own picks would take
 // it (Best fit's rules, and someone would go out); fit = its Brand Fit.
-export type BankCand = { id: string; name: string; fit: number; ready: boolean; auto: boolean }
+// placed = already dealt with — on a coming day, in today's list, or it
+// can't go out yet: it takes no place among the next `size` (Leo, Nov 19
+// 2026: "it brings up the same brands over and over again … the next 100
+// ranked brands").
+export type BankCand = { id: string; name: string; fit: number; ready: boolean; auto: boolean; placed?: boolean }
 
 // Best Brand Fit first (Leo: "make sure that higher ranked brands are
 // getting put into the schedule"); on a tie a brand with as many people
@@ -111,20 +115,23 @@ export function compareBank(x: { fit: number; ready: boolean; name: string }, y:
   return y.fit - x.fit || Number(y.ready) - Number(x.ready) || x.name.localeCompare(y.name)
 }
 
-// The list: every brand Leo added by hand that is still a candidate, then
-// the best of the system's own picks — never one he took off — up to
-// `size` brands in all (hand ones count toward it; more hand ones than
-// `size` and the list is just those). Best Brand Fit first.
+// The list: the next `size` brands still waiting for a day — the ones Leo
+// added by hand, then the best of the system's own picks, never one he took
+// off — best Brand Fit first. A brand already dealt with (placed) takes no
+// place: one of the system's picks leaves the list (its day shows it, and
+// the next-ranked brand comes in); one Leo added stays on it, uncounted,
+// until something goes out to it. More waiting hand adds than `size` and
+// the waiting list is just those.
 export function composeBank(cands: BankCand[], state: BankState): {
   list: Array<BankCand & { how: 'hand' | 'auto' }>
-  // System picks left out past `size` (the next ones in, if the number goes up).
+  // System picks left out past `size` (the next ones in, as places open).
   autoLeft: number
 } {
   const handIds = new Set(state.hand.map(h => h.id))
   const hand = cands.filter(c => handIds.has(c.id))
-  const room = Math.max(0, state.size - hand.length)
+  const room = Math.max(0, state.size - hand.filter(c => !c.placed).length)
   const auto = cands
-    .filter(c => c.auto && !handIds.has(c.id) && !(c.id in state.removed))
+    .filter(c => c.auto && !c.placed && !handIds.has(c.id) && !(c.id in state.removed))
     .sort(compareBank)
   const list = [
     ...hand.map(c => ({ ...c, how: 'hand' as const })),

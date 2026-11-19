@@ -250,18 +250,19 @@ async function main() {
   console.log('✓ 4 Discover: the Added tab splits by outreach; a tab change resets it');
 
   // 5. Week plan → browse a category -------------------------------------------
-  await page.evaluate((d) => { showView('weekplan'); WP.q = ''; WP.cat = 'energy'; WP.catData = d; WP.catSel = {}; wpRenderList(); }, WEEK);
+  await page.evaluate((d) => { showView('weekplan'); WP.q = ''; WP.view = 'cat'; WP.cat = 'energy'; WP.catData = d; wpRenderList(); }, WEEK);
   const wpSel = '#wp-filters select[data-reachf="weekplan"]';
-  const wpNames = () => texts('#wp-list .wp-b-name');
+  const wpNames = () => texts('#wp-list .wp-row:not(.wp-head) .wp-name');
   assert.deepEqual(await opts(wpSel), [['', 'Any'], ['yes', 'Reached out (1)'], ['no', 'Not reached out (2)']]);
   await page.selectOption(wpSel, 'yes');
   assert.deepEqual(await wpNames(), ['Wave Two']);
   assert.match(await page.textContent('#wp-filters'), /1 of 3 brands/);
-  assert.equal(await page.$('#wp-filters [data-wpaddtop]'), null, 'no "Add the top" — a reached brand is an Add anyway');
+  assert.match(await page.textContent('#wp-list [data-wpid="w2"]'), /Invited Oct 1 · already reached[\s\S]*Save anyway/, 'a reached brand is an "anyway"');
   await page.selectOption(wpSel, 'no');
   assert.deepEqual(await wpNames(), ['Wave One', 'Wave Three']);
-  assert.match(await page.textContent('#wp-filters [data-wpaddtop]'), /Add the top 2/);
-  console.log('✓ 5 Week plan: a category\'s brands and Add the top N follow the dropdown');
+  assert.match(await page.textContent('#wp-filters'), /2 of 3 brands/);
+  assert.match(await page.textContent('#wp-list [data-wpid="w1"]'), /^1\s*Wave One[\s\S]*Save to list/, 'a plain add');
+  console.log('✓ 5 Week plan: a category\'s brands follow the dropdown');
 
   // 6. Schedule → a category's drill-in ------------------------------------------
   await page.evaluate((d) => {

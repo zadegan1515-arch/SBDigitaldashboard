@@ -3620,8 +3620,9 @@ function lastOutreachAt(b: PlanBrand): string | null {
   return ms ? new Date(ms).toISOString() : null
 }
 
-// One brand on the list, as the page shows it. where: on a coming day
-// (`day`), in today's list, waiting for a day, or can't go (why).
+// One brand on the list, as the page shows it. where: waiting for a day
+// (rank 1..n), or — only a brand Leo added by hand, rank 0 — on a coming
+// day (`day`), in today's list, or can't go (why).
 type BankRow = {
   rank: number; id: string; name: string; category: string | null; tier: string | null
   fit: number; label: ContactsLabel; going: number; people: PreviewPerson[]; big: boolean
@@ -3636,9 +3637,13 @@ type BankCtx = { brands: PlanBrand[]; rates: AcceptRates; q: QueueCtx; plan: Out
 // The list as it stands: Leo's hand adds still in play, then the brands a
 // Best fit day would pick by itself (bestFitEligible — never reached, not a
 // giant held back, not Skip, not too small — with someone who would go
-// out), best Brand Fit first, up to the list's number. Brands going out
-// today are spent: not a system pick any more. `day` = the day the people
-// are counted for (the week's first sending day).
+// out), best Brand Fit first, up to the list's number. It is the NEXT
+// brands (Leo, Nov 19 2026: "the next 100 ranked brands" — the list "brings
+// up the same brands over and over again"): one of the system's picks that
+// is on a coming day or going out today has left it, and the next-ranked
+// brand has its place; one Leo added stays on it, uncounted (rank 0), until
+// something goes out to it. `day` = the day the people are counted for (the
+// first coming sending day).
 function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) {
   const today = localDayKey()
   const dayStart = startOfLocalDay()
@@ -3647,7 +3652,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
   const handAt = new Map(state.hand.map(h => [h.id, h.at]))
   const inToday = (b: PlanBrand) => pinnedOn.get(b.id) === today || b.targets.some(t =>
     !!t.queuedFor && t.queuedFor >= dayStart && !t.sentAt && !t.shelved && ['queued', 'drafted'].includes(t.status))
-  type Info = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; refusal: string | null; reason: string | null; isToday: boolean }
+  type Info = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; refusal: string | null; reason: string | null; where: BankRow['where']; pinned: string | null }
   const info = new Map<string, Info>()
   const cands: BankCand[] = []
   // Hand adds no longer on the list: reached since they were added, or off
@@ -3669,25 +3674,30 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     const p = previewBrandPicks(b, { forToday: false, dayStart, day, explicitAdd: hand })
     if (!p.people.length) auto = false
     if (!hand && !auto) continue
+    // Where it stands. One of the system's picks that is on a day already
+    // is that day's now — the list holds the next brands still waiting.
+    const pinned = pinnedOn.get(b.id) ?? null
+    const where: BankRow['where'] = isToday ? 'today'
+      : pinned ? 'day'
+      : refusal || !p.people.length ? 'cant'
+      : 'waiting'
+    if (!hand && where !== 'waiting') continue
     const label = contactLabel(b, b.contacts)
-    info.set(b.id, { b, label, people: p.people, refusal, reason: p.reason, isToday })
-    cands.push({ id: b.id, name: b.name, fit: f.score, ready: label.kind === 'ready', auto })
+    info.set(b.id, { b, label, people: p.people, refusal, reason: p.reason, where, pinned })
+    cands.push({ id: b.id, name: b.name, fit: f.score, ready: label.kind === 'ready', auto, placed: where !== 'waiting' })
   }
   const { list, autoLeft } = composeBank(cands, state)
-  const rows: BankRow[] = list.map((c, i) => {
+  // The rank counts the waiting brands only: 1 is the next brand to place.
+  let n = 0
+  const rows: BankRow[] = list.map(c => {
     const x = info.get(c.id)!
     const b = x.b
-    const pinned = pinnedOn.get(b.id) ?? null
-    const where: BankRow['where'] = x.isToday ? 'today'
-      : pinned ? 'day'
-      : x.refusal || !x.people.length ? 'cant'
-      : 'waiting'
     return {
-      rank: i + 1, id: b.id, name: b.name, category: b.category, tier: b.tier,
+      rank: x.where === 'waiting' ? ++n : 0, id: b.id, name: b.name, category: b.category, tier: b.tier,
       fit: c.fit, label: x.label, going: x.people.length, people: x.people.slice(0, 4), big: isBigBrand(b),
       how: c.how, addedAt: handAt.get(b.id) ?? null, reached: isReached(b),
-      where, day: where === 'day' ? pinned : null,
-      why: where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
+      where: x.where, day: x.where === 'day' ? x.pinned : null,
+      why: x.where === 'cant' ? reasonText(x.refusal ?? x.reason ?? 'exhausted', reasonCtx(b, ctx.q)) : null,
       linkedinUrl: b.linkedinUrl, website: b.website, externalId: b.externalId,
     }
   })
@@ -11610,22 +11620,30 @@ const handlers: Record<string, Handler> = {
   },
 
   // ── Outreach → Week plan ──────────────────────────────────────────
-  // The list (Setting weekBank) and the week it is spent on. week = 'this'
-  // | 'next' | a Monday key; the first week offered when it's missing (this
-  // week while it has a sending day after today, else next week).
+  // The list (Setting weekBank) and the days it is spent on: every coming
+  // sending day of this week and next (Leo, Nov 19 2026: one table, a day
+  // picked once at the top). week = 'this' | 'next' | a Monday key narrows
+  // the days to that week (the spread works a week at a time).
   async weekBank({ week }: any = {}) {
     const ctx = await loadBankCtx()
     const today = localDayKey()
     const weeks = planWeeks(today, k => isSendingKey(k, ctx.q.extras))
-    const pick = weeks.find(w => w.which === week || w.start === week) ?? weeks[0]
+    const one = week ? weeks.find(w => w.which === week || w.start === week) ?? null : null
+    const pick = one ?? weeks[0]
+    const keys = one ? one.days : weeks.flatMap(w => w.days)
+    const weekOf = new Map(weeks.flatMap(w => w.days.map(d => [d, w] as const)))
     const [marks, spreadLog, ex] = await Promise.all([
       readListDayMarks(), readWeekSpreadLog(),
       loadAgainExtras(ctx.brands.filter(isReached).map(b => b.id)),
     ])
     const cur: any = await (handlers.getOutreachPlan as Handler)({ __roster: ctx.brands })
     const brandById = new Map(ctx.brands.map(b => [b.id, b]))
-    const days = weekColumns(pick.days, cur, marks, brandById)
-    const bank = buildBank(ctx, ctx.state, { day: pick.days[0] })
+    const fitOf = (id: string) => { const b = brandById.get(id); return b ? planBrandFit(b, ctx.rates).score : null }
+    const days = weekColumns(keys, cur, marks, brandById).map(d => ({
+      ...d, week: weekOf.get(d.date)?.start ?? pick.start, which: weekOf.get(d.date)?.which ?? pick.which,
+      pinned: d.pinned.map(p => ({ ...p, fit: fitOf(p.id) })),
+    }))
+    const bank = buildBank(ctx, ctx.state, { day: keys[0] })
     // Reach out again: reached before, a decision maker never contacted.
     const again = againRows(ctx.brands, { today, ex, q: ctx.q, rates: ctx.rates, plan: ctx.plan })
     // Hand adds that left the list (reached since, archived…) leave the
@@ -11640,6 +11658,12 @@ const handlers: Record<string, Handler> = {
       .filter((b): b is PlanBrand => !!b && !isReached(b) && !b.passedAt)
       .map(b => ({ id: b.id, name: b.name, category: b.category, at: ctx.state.removed[b.id] }))
       .sort((a, b) => b.at.localeCompare(a.at))
+    // On a Pass now: off the list until it ends — listed so one can be
+    // brought back sooner. Soonest back first.
+    const passed = ctx.brands
+      .filter(b => passedNow(b) && !b.passedAt && !b.stoppedAt && !b.doNotEmail)
+      .map(b => ({ id: b.id, name: b.name, category: b.category, until: b.passedUntil!.toISOString(), reached: isReached(b) }))
+      .sort((a, b) => a.until.localeCompare(b.until))
     return {
       today,
       weeks: weeks.map(w => ({ start: w.start, which: w.which, days: w.days, labels: w.days.map(dayLabel) })),
@@ -11650,7 +11674,7 @@ const handlers: Record<string, Handler> = {
         hand: bank.rows.filter(r => r.how === 'hand').length,
         waiting: bank.rows.filter(r => r.where === 'waiting').length,
         onDays: bank.rows.filter(r => r.where === 'day').length,
-        removed,
+        removed, passed,
       },
       spreadLast: spreadLog && spreadLog.days.some(d => d.date > today)
         ? { at: spreadLog.at, days: spreadLog.days.filter(d => d.date > today).map(d => ({ date: d.date, added: d.added.length })) }
@@ -11660,7 +11684,7 @@ const handlers: Record<string, Handler> = {
         due: again.filter(r => r.state === 'due').length, late: again.filter(r => r.state === 'late').length,
         fromDays: AGAIN_FROM_DAYS, dueDays: AGAIN_DUE_DAYS,
       },
-      cap: DAILY_SEND_LIMIT,
+      cap: DAILY_SEND_LIMIT, passDays: PASS_DAYS,
       linkedin: { limit: LINKEDIN_WEEK_LIMIT, sentLast7: cur?.linkedinWeek?.sentLast7 ?? 0 },
       priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
     }
