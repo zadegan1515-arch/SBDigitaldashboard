@@ -2290,8 +2290,27 @@ it (other Claude environments, Leo's Mac `.env.local`) needs the new value.
   0 / 1 / 3 from `findUnsent`, `auto` = outreachAutoQueued; unsentOn reads stamps in queue order); Leo can still
   reorder (⋯ → ⤒ Move to top). moveCarried uses the same order; Move what's left's question names the day's own
   brands that would then wait (`nowWait`, `movedWait`).
+  **Two missed days and a brand comes off** (Leo, Nov 18 2026: "sometimes once it is set on a day i dont even end up
+  sending out bc i dont want to outreach to that brand then"; his pick: **Drop after 2 misses**). Carried brands go
+  first, so one he kept skipping sat on top of every day. A **miss** (`missedOn`, carry.ts) = the brand was in a day's
+  list — people stamped into that day's queue — and nobody there was sent; **never** a brand that only waited for room
+  or was only shown (nobody stamped: a day with 40 brands and room for 35 people doesn't count against the ones that
+  didn't fit, nor does a day the list was never opened), and never a half-sent brand (tier 0, the queue rules finish or
+  rest it). The roll counts them per brand (`carryMisses`: the last roll's count carries on when it had put the brand on
+  the day it has just missed; a wait in between doesn't reset it; a log from before the rule counts each carry as one)
+  and on the second (`MISS_LIMIT`, `splitMissed`) **drops it instead of carrying it** (`dropMissed` in route.ts): its
+  people leave the list and wait (queuedFor null, nothing shelved), it is pinned on no day, and Setting
+  `outreachDropped` = { brandId: { at, until } } holds it for `DROP_HOLD_DAYS` (14): **no day picks it by itself**
+  (`QueueCtx.dropped` → `bestFitEligible`: Best fit and category days' rows, today's fill, Fill to 35, Plan my week).
+  It still **waits on the Week plan list** (`keepDropped` in buildBank) and Reach out again, and **a pin by hand takes
+  it like any brand** (never held, never "doesn't fit" — `keepDropped` in dayThemeChanges, `q.dropped` in the
+  Schedule's `belongs`); missed twice again, it comes off again. A day Leo already pinned it to is left alone. The
+  Schedule's carried-over note adds **Came off** — "N brands sat on two sending days with nothing sent, so they're back
+  on your list: …" (`getOutreachPlan.carry.dropped` / `holdDays`, `renderSchedCarry`; a brand put back on a day leaves
+  the line). A move by hand (Move what's left, Move them to…) is never a miss. Tests: `test-carry.mjs`, the roll in
+  `test-queue-e2e.js` (Twice Tonic comes off, Waity Water is carried again), the line in `test-schedule.js` (9).
   Rules pure in `src/lib/carry.ts` (`node scripts/test-carry.mjs`); last roll in Setting
-  `outreachCarry` (per brand `tier`, `since`, `times` — `carryTimes`; Schedule "Carried over" note + "From <day> ·
+  `outreachCarry` (per brand `tier`, `since`, `times`, `misses` — `carryTimes`; + `dropped`; Schedule "Carried over" note + "From <day> ·
   carried 2×" tags, **Move them to…** = `moveCarried`), `outreachCarryDone` = { day, through, running } (one request claims the roll with a
   conditional write; others wait for it; a claim older than 30 s is taken over). Today's column has **Move what's left
   to…** (`moveUnsent`, previewed) — it closes today to automatic picks (Setting `outreachDayClosed`;

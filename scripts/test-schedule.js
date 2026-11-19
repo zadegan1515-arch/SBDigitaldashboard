@@ -99,6 +99,9 @@ let undoToday = false;
 // Section 14 (second review, Oct 13 2026): a waiting card on the one day for
 // a part-sent brand's rest; Plan my week's Undo onto today.
 let endsCard = false;
+// The last roll's note (getOutreachPlan.carry): what was carried, and what
+// came off after two missed days (Leo, Nov 18 2026).
+let carryNote = null;
 const SUG = ['s1', 's2', 's3', 's4', 's5', 's6'].map((id, i) => ({ id, name: 'Sug ' + (i + 1), category: 'energy', going: 3, label: { kind: 'ready', reachable: 3, need: 3, onFile: 3 }, fit: { score: 80 - i }, people: [] }));
 const GIANT_CARD = { id: 'g1', name: 'Red Bull', category: 'energy', state: 'blocked', going: 0, people: [], giant: true, reason: 'giant', reasonText: 'A giant (a household name) — held back for now. Add anyway to send it.' };
 const PLAN = () => ({
@@ -107,6 +110,7 @@ const PLAN = () => ({
   pool: { total: 40, cap: 30 },
   priority: PRIORITY,
   themeUndo,
+  carry: carryNote,
   linkedinWeek: { sentLast7: 40, limit: 100, near: 90, days: carryCard ? { '2026-10-13': { count: 106, over: 6, near: true } } : {} },
   plan: { '2026-10-07': { category: null, brandIds: ['p1'] }, '2026-10-08': { category: 'spirits', brandIds: [] } },
   labels: {},
@@ -572,7 +576,29 @@ async function main() {
   assert.deepEqual(last('planReorderDay').args, { date: '2026-10-13', brandIds: ['k2', 'k1'] });
   carryCard = false;
   cap13 = null;
-  console.log('✓ 9 a day LinkedIn\'s week caps says so and fills to it; a carried card says how long, Move to top sends it first');
+  // Two missed days: the Schedule says which brands came off, with or
+  // without anything carried beside them.
+  carryNote = { at: '2026-10-07T09:00:00Z', to: '2026-10-07', brands: [], holdDays: 14,
+    dropped: [{ id: 'd1', name: 'Twice Tonic', from: '2026-10-06', since: '2026-10-01', misses: 2, people: 3 }] };
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => /Came off/.test(document.getElementById('sched-carry').textContent));
+  const off1 = await page.textContent('#sched-carry');
+  assert.match(off1, /Came off\s*1 brand sat on two sending days with nothing sent, so it’s back on your list:\s*Twice Tonic/);
+  assert.match(off1, /No day picks it by itself for 14 days — put one on a day to bring it back\./);
+  assert.ok(!/Carried over/.test(off1), 'nothing carried: only the Came off line');
+  carryNote = { at: '2026-10-07T09:00:00Z', to: '2026-10-07', holdDays: 14,
+    brands: [{ id: 'p1', name: 'BodyArmor', people: 3, from: '2026-10-06', tier: 1, since: '2026-10-06', times: 1, misses: 1 }],
+    dropped: [{ id: 'd1', name: 'Twice Tonic', from: '2026-10-06', since: '2026-10-01', misses: 2, people: 3 }, { id: 'd2', name: 'FRE', from: '2026-10-06', since: '2026-10-01', misses: 3, people: 1 }] };
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => /Carried over/.test(document.getElementById('sched-carry').textContent));
+  const off2 = await page.textContent('#sched-carry');
+  assert.match(off2, /Carried over\s*1 brand \(3 people\) that didn’t go out on .* now on today:\s*BodyArmor/);
+  assert.match(off2, /Came off\s*2 brands sat on two sending days with nothing sent, so they’re back on your list:\s*Twice Tonic, FRE/);
+  assert.equal(await page.locator('#sched-carry [data-sdcarry]').count(), 1, 'Move them to… is for the carried ones');
+  carryNote = null;
+  await page.evaluate(() => sdRefresh());
+  await page.waitForFunction(() => !document.getElementById('sched-carry').textContent.trim());
+  console.log('✓ 9 a day LinkedIn\'s week caps says so and fills to it; a carried card says how long, Move to top sends it first; brands that came off after two missed days are named');
 
   // 10. Day header counts brands; What gets answered is read-only and only
   //     suggests; Ready for a second try is by hand only ----------------

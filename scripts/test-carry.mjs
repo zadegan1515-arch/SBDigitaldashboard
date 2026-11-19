@@ -31,7 +31,7 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { rollWindow, findUnsent, planCarry, carryOrder, carryTimes } = await import(pathToFileURL(join(out, 'carry.js')).href)
+const { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, missedOn, missesBefore, carryMisses, splitMissed, MISS_LIMIT, DROP_HOLD_DAYS } = await import(pathToFileURL(join(out, 'carry.js')).href)
 const { queueGate } = await import(pathToFileURL(join(out, 'queue-rules.js')).href)
 const { parseChosen, addChosen, CHOSEN_MAX } = await import(pathToFileURL(join(out, 'chosen.js')).href)
 
@@ -300,6 +300,73 @@ is('carryOrder: finishing pins keep the day\'s order among themselves',
   is('an old log without since: its from day', t.get('b'), { since: '2026-10-13', times: 2 })
   is('new to the roll: once', t.get('c'), { since: '2026-10-14', times: 1 })
   is('a log from another day does not count', carryTimes({ to: '2026-10-01', brands: [{ id: 'a', from: '2026-09-30' }] }, [{ id: 'a', from: '2026-10-14' }]).get('a'), { since: '2026-10-14', times: 1 })
+}
+
+// ---- two missed days and a brand comes off (Leo, Nov 18 2026) --------------
+{
+  is('the limit is two days, the hold two weeks', [MISS_LIMIT, DROP_HOLD_DAYS], [2, 14])
+  const inList = { from: '2026-11-18', stamped: ['t1', 't2'], tier: 1, at: 0 }
+  const waited = { from: '2026-11-18', stamped: [], tier: 1, at: 1 }
+  const half = { from: '2026-11-18', stamped: ['t3'], tier: 0, at: 2 }
+  const autoPick = { from: '2026-11-18', stamped: ['t4'], tier: 3, at: 3 }
+  is('a miss: in the day\'s list and nobody sent', missedOn(inList), true)
+  is('not a miss: it only waited for room (nobody stamped)', missedOn(waited), false)
+  is('not a miss: half-sent — someone went', missedOn(half), false)
+  is('a miss: one the fill picked that sat in the list', missedOn(autoPick), true)
+
+  // Day 1: planned by hand, in the list, not sent — carried, one miss.
+  const day1 = new Map([['a', inList], ['w', waited], ['h', half]])
+  const m1 = carryMisses(null, day1)
+  is('first day: one miss for the one in the list, none for the others', [m1.get('a'), m1.get('w'), m1.get('h')], [1, 0, 0])
+  is('first day: nothing comes off', [splitMissed(day1, m1).drop.length, [...splitMissed(day1, m1).carry.keys()]], [0, ['a', 'w', 'h']])
+
+  // Day 2: the roll carried them to Nov 19; a missed again, w waited again, h still half-sent.
+  const prev = { to: '2026-11-19', brands: [
+    { id: 'a', from: '2026-11-18', since: '2026-11-18', times: 1, misses: 1 },
+    { id: 'w', from: '2026-11-18', since: '2026-11-18', times: 1, misses: 0 },
+    { id: 'h', from: '2026-11-18', since: '2026-11-18', times: 1, misses: 0 },
+    { id: 'x', from: '2026-11-18', since: '2026-11-18', times: 1, misses: 1 },
+  ] }
+  const day2 = new Map([
+    ['a', { from: '2026-11-19', stamped: ['t1', 't2'], tier: 1, at: 0 }],
+    ['w', { from: '2026-11-19', stamped: [], tier: 1, at: 1 }],
+    ['h', { from: '2026-11-19', stamped: ['t3'], tier: 0, at: 2 }],
+    // One miss on file, then a day it only waited through (40 brands on a day with room for 35 people).
+    ['x', { from: '2026-11-19', stamped: [], tier: 1, at: 3 }],
+    // New on Nov 19.
+    ['n', { from: '2026-11-19', stamped: ['t9'], tier: 1, at: 4 }],
+  ])
+  const m2 = carryMisses(prev, day2)
+  is('second day: counts carry on from the last roll', [m2.get('a'), m2.get('w'), m2.get('h'), m2.get('x'), m2.get('n')], [2, 0, 0, 1, 1])
+  const s2 = splitMissed(day2, m2)
+  is('two days in the list with nothing sent: it comes off, with the people to take out of the list', s2.drop, [{ id: 'a', from: '2026-11-19', stamped: ['t1', 't2'], misses: 2 }])
+  is('the rest carry on: waited twice, half-sent, one miss then a wait, new', [...s2.carry.keys()], ['w', 'h', 'x', 'n'])
+
+  // Day 3: x is in the list at last and isn't sent — its second miss.
+  const prev3 = { to: '2026-11-24', brands: [{ id: 'x', from: '2026-11-19', since: '2026-11-18', times: 2, misses: 1 }] }
+  const day3 = new Map([['x', { from: '2026-11-24', stamped: ['t5'], tier: 1, at: 0 }]])
+  is('a wait in between doesn\'t reset the count: the next miss is the second', splitMissed(day3, carryMisses(prev3, day3)).drop.map(d => [d.id, d.misses]), [['x', 2]])
+
+  // Never on a day it only waited through, however many misses it has.
+  const stuck = new Map([['x', { from: '2026-11-24', stamped: [], tier: 1, at: 0 }]])
+  const prevStuck = { to: '2026-11-24', brands: [{ id: 'x', from: '2026-11-19', times: 4, misses: 3 }] }
+  is('it never comes off on a day it only waited through', splitMissed(stuck, carryMisses(prevStuck, stuck)).drop, [])
+
+  // A log from before misses were counted: each morning it moved counts as one.
+  const old = { to: '2026-11-18', brands: [{ id: 'fre', from: '2026-11-17', since: '2026-11-11', times: 3 }, { id: 'ih', from: '2026-11-17', times: 1 }] }
+  is('an older log: carried 3 times = 3 misses on file', missesBefore(old, 'fre', '2026-11-18'), 3)
+  is('an older log: carried once = 1', missesBefore(old, 'ih', '2026-11-18'), 1)
+  is('not on the last roll: none', missesBefore(old, 'zzz', '2026-11-18'), 0)
+  is('the last roll put it on another day than the one it missed: a fresh start', missesBefore(old, 'fre', '2026-11-20'), 0)
+  is('no last roll', missesBefore(null, 'fre', '2026-11-18'), 0)
+  const today = new Map([['fre', { from: '2026-11-18', stamped: ['t1'], tier: 1, at: 0 }], ['ih', { from: '2026-11-18', stamped: ['t2'], tier: 1, at: 1 }]])
+  is('carried before the rule and missed again: both come off', splitMissed(today, carryMisses(old, today)).drop.map(d => [d.id, d.misses]), [['fre', 4], ['ih', 2]])
+
+  // A half-sent brand is the queue rules' to finish or rest — never dropped here.
+  const halfAgain = new Map([['h', { from: '2026-11-19', stamped: ['t3'], tier: 0, at: 0 }]])
+  is('a half-sent brand never comes off this way', splitMissed(halfAgain, new Map([['h', 5]])).drop, [])
+  // Another limit can be asked for.
+  is('a limit of three', splitMissed(day2, m2, 3).drop, [])
 }
 
 console.log(fail ? `carry: ${pass} passed, ${fail} FAILED` : `carry: all ${pass} passed`)

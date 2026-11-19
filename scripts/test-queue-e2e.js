@@ -168,7 +168,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     // sent — and it sits on a later day too (queued for yesterday by hand
     // while it was planned there).
     const holdDay = shift(today, 7);
-    await setting('outreachPlan', { [today]: { category: 'electrolytes', brandIds: [] }, [holdDay]: { category: null, brandIds: ['hl'] } });
+    await setting('outreachPlan', {
+      [today]: { category: 'electrolytes', brandIds: [] }, [holdDay]: { category: null, brandIds: ['hl'] },
+      // (Two missed days — below.)
+      [yday]: { category: null, brandIds: ['twice', 'waity'] },
+    });
     await mkBrand('hl', 'Holdlate Hydrate', 'electrolytes');
     const hlp = await mkPeople('hl', BUYERS);
     await prisma.target.create({ data: { brandId: 'hl', contactId: hlp[0].id, status: 'sent', sentAt: noonNY(yday), queuedFor: noonNY(yday) } });
@@ -212,6 +216,26 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     for (const c of kyp.slice(0, 2)) await prisma.target.create({ data: { brandId: 'kay', contactId: c.id, status: 'sent', sentAt: noonNY(yday), queuedFor: noonNY(yday) } });
     const kayRest = (await prisma.target.create({ data: { brandId: 'kay', contactId: kyp[2].id, status: 'queued', queuedFor: new Date(noonNY(yday).getTime() + 3600e3) } })).id;
 
+    // Two missed days and a brand comes off (Leo, Nov 18 2026: "sometimes
+    // once it is set on a day i dont even end up sending out bc i dont want
+    // to outreach to that brand then"; his pick: drop after 2 misses). The
+    // last roll carried both onto yesterday with one miss on file. Twice
+    // Tonic was in yesterday's list and nobody was sent: its second miss.
+    // Waity Water only waited (pinned, nobody stamped — a day with more
+    // brands than room): never a miss.
+    await mkBrand('twice', 'Twice Tonic', 'electrolytes');
+    const twiceIds = [];
+    for (const [i, c] of (await mkPeople('twice', BUYERS)).entries()) {
+      twiceIds.push((await prisma.target.create({ data: { brandId: 'twice', contactId: c.id, status: 'queued', queuedFor: new Date(noonNY(yday).getTime() + 5 * 3600e3 + i) } })).id);
+    }
+    await mkBrand('waity', 'Waity Water', 'electrolytes');
+    for (const c of await mkPeople('waity', BUYERS)) await prisma.target.create({ data: { brandId: 'waity', contactId: c.id, status: 'queued' } });
+    const dayBefore = shift(yday, -1);
+    await setting('outreachCarry', { at: new Date(Date.now() - 864e5).toISOString(), to: yday, brands: [
+      { id: 'twice', name: 'Twice Tonic', people: 3, from: dayBefore, tier: 1, since: dayBefore, times: 1, misses: 1 },
+      { id: 'waity', name: 'Waity Water', people: 3, from: dayBefore, tier: 1, since: dayBefore, times: 1, misses: 1 },
+    ] });
+
     // Opening an off day reads the plan, and the first plan read of the day
     // runs the roll — so today opens only now, with everything above in
     // place (opened first, the roll ran on an empty database and this
@@ -222,9 +246,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await data('setExtraSendingDay', { date: today, on: true });
     let plan = await data('getOutreachPlan');  // the first plan read of the day: the roll
     const hlFirst = plan.plan[today].brandIds.slice(0, 3);
-    assert.deepEqual([hlFirst.slice().sort(), plan.plan[today].brandIds.slice(3)], [['half', 'hl', 'kay'], ['jam', 'four']], 'Halfway, Kaykay and Holdlate (half-sent) first, then Jamjar and Fourway (queued by hand): ' + JSON.stringify(plan.plan[today]));
+    assert.deepEqual([hlFirst.slice().sort(), plan.plan[today].brandIds.slice(3)], [['half', 'hl', 'kay'], ['waity', 'jam', 'four']], 'Halfway, Kaykay and Holdlate (half-sent) first, then Waity (planned on the day it missed), Jamjar and Fourway (queued by hand): ' + JSON.stringify(plan.plan[today]));
     assert.ok(!(plan.plan[holdDay]?.brandIds || []).includes('hl'), 'Holdlate is off the later day: its rest goes today');
-    assert.deepEqual((plan.carry?.brands || []).filter(b => b.id !== 'hl').map(b => [b.id, b.from, b.people]), [['half', yday, 2], ['kay', yday, 1], ['jam', yday, 1], ['four', yday, 5]], 'the carry note names them');
+    assert.deepEqual((plan.carry?.brands || []).filter(b => !['hl', 'waity'].includes(b.id)).map(b => [b.id, b.from, b.people]), [['half', yday, 2], ['kay', yday, 1], ['jam', yday, 1], ['four', yday, 5]], 'the carry note names them');
     assert.deepEqual((plan.carry?.brands || []).filter(b => b.id === 'hl').map(b => [b.from, b.people]), [[yday, 2]], 'Holdlate too');
     const todayCol = plan.days.find(d => d.date === today);
     const halfCard = todayCol.pinned.find(p => p.id === 'half');
@@ -243,6 +267,34 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const brandPage = await data('planDayChoices', { brandId: 'late' });
     assert.equal(brandPage.brand.refusalReason, 'resting', 'Late rests');
     ok('the roll: a part-sent brand\'s rest goes out the next sending day; one a day late rests; a passed brand never carries');
+    // Two missed days: Twice Tonic is off the Schedule, its people wait, the
+    // Schedule says so, and no day picks it by itself while it is held —
+    // though today is an electrolytes day it would otherwise fill from.
+    assert.ok(!Object.values(plan.plan).some(d => (d.brandIds || []).includes('twice') && d !== plan.plan[yday]), 'Twice Tonic is pinned on no day from today on: ' + JSON.stringify(plan.plan));
+    assert.deepEqual((plan.carry?.dropped || []).map(b => [b.id, b.name, b.from, b.since, b.misses, b.people]), [['twice', 'Twice Tonic', yday, dayBefore, 2, 3]], 'the Schedule names what came off: ' + JSON.stringify(plan.carry?.dropped));
+    assert.equal(plan.carry.holdDays, 14);
+    assert.deepEqual(await prisma.target.findMany({ where: { id: { in: twiceIds } }, select: { status: true, shelved: true, queuedFor: true }, orderBy: { id: 'asc' } }),
+      twiceIds.map(() => ({ status: 'queued', shelved: false, queuedFor: null })), 'its people are out of the list and waiting — nobody shelved');
+    const held = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachDropped' } })).value);
+    assert.deepEqual(held, { twice: { at: today, until: shift(today, 14) } }, 'held for two weeks: ' + JSON.stringify(held));
+    assert.ok(!plan.days.some(d => d.brands.concat(d.pinned, d.overflow || []).some(b => b.id === 'twice')), 'no day shows it by itself');
+    assert.ok(!tq.targets.some(t => t.brandId === 'twice'), 'and today\'s list didn\'t take it back in');
+    // Waity only waited: carried again, its one miss still on file.
+    const waityRow = (plan.carry?.brands || []).find(b => b.id === 'waity');
+    assert.deepEqual([waityRow.from, waityRow.since, waityRow.times, waityRow.misses], [yday, dayBefore, 2, 1], 'Waity is carried again, not dropped: ' + JSON.stringify(waityRow));
+    assert.equal(todayCol.pinned.find(p => p.id === 'waity')?.state, 'going', 'and goes today');
+    // It waits on the Week plan list, and a day picked by hand takes it like any brand.
+    const bankA = await data('weekBank', {});
+    assert.equal(bankA.bank.rows.find(r => r.id === 'twice')?.where, 'waiting', 'back on the list: ' + JSON.stringify(bankA.bank.rows.map(r => [r.id, r.where])));
+    const backDay = plan.days.map(d => d.date).filter(k => k > today)[0];
+    const putBack = await data('planAddBrands', { date: backDay, brandIds: ['twice'] });
+    assert.ok(putBack.results[0].added && putBack.results[0].going > 0, 'put back by hand: ' + JSON.stringify(putBack.results[0]));
+    const planBack = await data('getOutreachPlan');
+    const backCol = planBack.days.find(d => d.date === backDay);
+    assert.deepEqual([backCol.pinned.find(p => p.id === 'twice')?.state, backCol.offTheme], ['going', 0], 'it goes on that day and never reads "doesn\'t fit"');
+    assert.deepEqual(planBack.carry?.dropped || [], [], 'and once it is back on a day the note stops naming it');
+    await data('planRemoveBrand', { date: backDay, brandId: 'twice' });
+    ok('two missed days: a brand in two days\' lists with nothing sent comes off, its people wait, no day picks it by itself for two weeks, it waits on the Week plan list and a pin by hand takes it; one that only waited is carried again');
     // Second review: the person Leo queued, carried back to the pool by the
     // roll, goes again — not set aside next in line for the buyers.
     const jamT = await prisma.target.findUnique({ where: { id: jamie } });
@@ -254,11 +306,12 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     const kayT = await prisma.target.findUnique({ where: { id: kayRest } });
     assert.deepEqual([kayT.shelved, !!kayT.queuedFor], [false, true], 'the rest of Kaykay goes (its sitting\'s second day): ' + JSON.stringify(kayT));
     // Out of the way of the sections below.
-    await prisma.brand.updateMany({ where: { id: { in: ['jam', 'kay', 'four', 'hl'] } }, data: { passedAt: new Date() } });
-    await prisma.target.updateMany({ where: { brandId: { in: ['jam', 'kay', 'four', 'hl'] } }, data: { queuedFor: null } });
+    await prisma.brand.updateMany({ where: { id: { in: ['jam', 'kay', 'four', 'hl', 'twice', 'waity'] } }, data: { passedAt: new Date() } });
+    await prisma.target.updateMany({ where: { brandId: { in: ['jam', 'kay', 'four', 'hl', 'twice', 'waity'] } }, data: { queuedFor: null } });
     const curA = JSON.parse((await prisma.setting.findUnique({ where: { key: 'outreachPlan' } })).value);
-    curA[today].brandIds = curA[today].brandIds.filter(id => !['jam', 'kay', 'four', 'hl'].includes(id));
+    curA[today].brandIds = curA[today].brandIds.filter(id => !['jam', 'kay', 'four', 'hl', 'twice', 'waity'].includes(id));
     delete curA[holdDay];
+    delete curA[yday];
     await setting('outreachPlan', curA);
     ok('the roll carries a flagged person Leo queued by hand (buyers waiting beside them), a part-sent brand\'s hand-queued rest, a fourth Leo added past the number, and a half-sent brand planned for a later day: all go today');
 

@@ -133,6 +133,65 @@ export function carryTimes(
   return out
 }
 
+// Two missed days and a brand comes off (Leo, Nov 18 2026: "sometimes once
+// it is set on a day i dont even end up sending out bc i dont want to
+// outreach to that brand then"; his pick: "Drop after 2 misses"). Carried
+// brands go first on their new day, so one he keeps skipping sat on top of
+// every day and pushed the ones he wants down. Now a brand that was in two
+// sending days' lists with nothing sent comes off the Schedule by itself and
+// waits on his list; the system's own picks leave it alone for DROP_HOLD_DAYS.
+// He can put it on a day again any time (a pin by hand is never held).
+export const MISS_LIMIT = 2
+export const DROP_HOLD_DAYS = 14
+
+// A miss = the brand had its turn and nothing went out: its people were in
+// that day's list (stamped into the queue) and none were sent. Not a miss: a
+// brand that only waited for room or was only shown (nobody stamped — a day
+// with 40 brands and room for 35 people never counts against the ones that
+// didn't fit, nor does a day the list was never opened), and a half-sent
+// brand (tier 0 — someone went; the queue rules finish or rest it).
+export function missedOn(u: Unsent): boolean {
+  return (u.tier ?? 1) !== 0 && u.stamped.length > 0
+}
+
+type PrevCarry = { to: string; brands: Array<{ id: string; from: string; since?: string; times?: number; misses?: number }> } | null
+
+// How many days running a brand had missed before this roll: the count the
+// last roll gave it, when that roll carried it onto the day it has just
+// missed again. An entry written before misses were counted has none — each
+// morning it moved counts as one (those carries were of brands in the list).
+export function missesBefore(prev: PrevCarry, id: string, from: string): number {
+  const p = prev && prev.to === from ? prev.brands.find(b => b.id === id) : undefined
+  if (!p) return 0
+  return typeof p.misses === 'number' && p.misses >= 0 ? p.misses : Math.max(1, Number(p.times) || 1)
+}
+
+// Each unsent brand's misses, this roll's included.
+export function carryMisses(prev: PrevCarry, unsent: ReadonlyMap<string, Unsent>): Map<string, number> {
+  const out = new Map<string, number>()
+  for (const [id, u] of unsent) out.set(id, missesBefore(prev, id, u.from) + (missedOn(u) ? 1 : 0))
+  return out
+}
+
+// Which unsent brands come off and which carry on. A brand comes off on a
+// day it missed (never on one it only waited through) once that makes
+// `limit` in a row.
+export type DropOne = { id: string; from: string; stamped: string[]; misses: number }
+export function splitMissed(
+  unsent: ReadonlyMap<string, Unsent>,
+  misses: ReadonlyMap<string, number>,
+  limit: number = MISS_LIMIT,
+): { carry: Map<string, Unsent>; drop: DropOne[] } {
+  const carry = new Map<string, Unsent>()
+  const drop: DropOne[] = []
+  for (const [id, u] of unsent) {
+    const n = misses.get(id) ?? 0
+    if (missedOn(u) && n >= limit) drop.push({ id, from: u.from, stamped: u.stamped.slice(), misses: n })
+    else carry.set(id, u)
+  }
+  return { carry, drop }
+}
+
 // What each unsent brand is, as far as moving it goes. refusal: why it
 // can't go out at all (archived, do-not-email, in talks), in words, or
 // null. passedOn: the day Pass today was pressed on it, if any. pinnedOn:

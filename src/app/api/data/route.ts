@@ -93,7 +93,7 @@ import { cleanChatBrand, matchRoster, chatNotes } from '@/lib/chat-add'
 import { actionText, argsBrief, readCommit, isReadAction, type DayCommit } from '@/lib/claude-day'
 import { findLinkedInPeople, logLinkedInPerson, undoLinkedInLog, checkNewPerson } from '@/lib/li-log-db'
 import { isLogStage } from '@/lib/li-log'
-import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, type Unsent, type CarryFacts, type CarryTier, type Moved } from '@/lib/carry'
+import { rollWindow, findUnsent, planCarry, carryOrder, carryTimes, carryMisses, splitMissed, missesBefore, DROP_HOLD_DAYS, type Unsent, type CarryFacts, type CarryTier, type Moved, type DropOne } from '@/lib/carry'
 import { BANK_KEY, bankSize, cleanBank, addToBank, removeFromBank, putBack, handSpent, composeBank, planWeeks, weekRooms, spreadWeek, seeded, type BankState, type BankCand } from '@/lib/week-bank'
 import { reachAgainOf, AGAIN_FROM_DAYS, AGAIN_DUE_DAYS, type Again } from '@/lib/reach-again'
 import { personWhere, basedAbroad } from '@/lib/abroad'
@@ -1021,14 +1021,42 @@ function brandStage(b: PlanBrand): BrandStage | null {
 // hold-back never sets one aside.
 // smallOn: Brands → All brands' Too small switch (queue-rules.ts SMALL_KEY):
 // too small brands may be picked by the system like any other.
-type QueueCtx = { giantsOn: boolean; giantOk: Set<string>; today: string; extras: ExtraDays; chosen: ReadonlySet<string>; smallOn: boolean }
+// dropped: brands that came off the Schedule after two missed days and are
+// still held (carry.ts, Setting outreachDropped) — the system's own picks
+// leave them alone; a pin by hand is never held.
+type QueueCtx = { giantsOn: boolean; giantOk: Set<string>; today: string; extras: ExtraDays; chosen: ReadonlySet<string>; smallOn: boolean; dropped: ReadonlySet<string> }
 async function readQueueCtx(): Promise<QueueCtx> {
-  const [raw, extras, chosen, , small] = await Promise.all([
+  const [raw, extras, chosen, , small, dropped] = await Promise.all([
     readJsonSetting<unknown>(prisma, GIANTS_KEY, {}), readExtraDays(), readChosen(), readStopIndex(),
-    readJsonSetting<unknown>(prisma, SMALL_KEY, {}),
+    readJsonSetting<unknown>(prisma, SMALL_KEY, {}), readDropped(),
   ])
   const g = parseGiants(raw)
-  return { giantsOn: g.on, giantOk: g.ok, today: localDayKey(), extras, chosen, smallOn: parseSmall(small) }
+  return { giantsOn: g.on, giantOk: g.ok, today: localDayKey(), extras, chosen, smallOn: parseSmall(small), dropped }
+}
+// Brands that came off the Schedule after two missed days (Leo, Nov 18 2026;
+// src/lib/carry.ts): { brandId: { at, until } }, day keys. Until `until` the
+// system's own picks pass them over (bestFitEligible); the Week plan list
+// still shows them and a pin by hand goes like any other.
+const DROPPED_KEY = 'outreachDropped'
+type DroppedHold = Record<string, { at: string; until: string }>
+function cleanDropped(v: unknown, today: string): DroppedHold {
+  const out: DroppedHold = {}
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out
+  for (const [id, e] of Object.entries(v as Record<string, any>)) {
+    if (e && isDayKey(e.until) && e.until >= today) out[id] = { at: isDayKey(e.at) ? e.at : today, until: e.until }
+  }
+  return out
+}
+async function readDropped(today = localDayKey()): Promise<Set<string>> {
+  return new Set(Object.keys(cleanDropped(await readJsonSetting<unknown>(prisma, DROPPED_KEY, {}), today)))
+}
+async function noteDropped(ids: string[], today = localDayKey()): Promise<void> {
+  if (!ids.length) return
+  const cur = cleanDropped(await readJsonSetting<unknown>(prisma, DROPPED_KEY, {}), today)
+  const until = addDaysKey(today, DROP_HOLD_DAYS)
+  for (const id of ids) cur[id] = { at: today, until }
+  const value = JSON.stringify(cur)
+  await prisma.setting.upsert({ where: { key: DROPPED_KEY }, create: { key: DROPPED_KEY, value }, update: { value } })
 }
 // People picked for a day's list (src/lib/chosen.ts, Setting
 // outreachChosen): queued by hand, or put back in the pool by the morning
@@ -1637,7 +1665,11 @@ async function readShownOn(today = localDayKey()): Promise<Map<string, string>> 
 // Per brand: tier = where it went on the new day (carry.ts CarryTier),
 // since / times = the first day it missed and how many mornings in a row
 // it has moved (the card's "From Tue · carried 2×").
-type CarryLog = { at: string; to: string; brands: Array<Moved & { since?: string; times?: number }> }
+// misses = days running it was in the list with nothing sent (carry.ts);
+// dropped = the brands this roll took off for missing two (the Schedule's
+// "Came off" line).
+type DroppedBrand = { id: string; name: string; from: string; since: string; misses: number; people: number }
+type CarryLog = { at: string; to: string; brands: Array<Moved & { since?: string; times?: number; misses?: number }>; dropped?: DroppedBrand[] }
 
 // "Move what's left" closes today to automatic picks: the room it frees
 // must not fill straight back up from the rotation (and roll again
@@ -1663,6 +1695,12 @@ async function readCarryLog(): Promise<CarryLog | null> {
         id: String(b.id), name: String(b.name ?? ''), people: Number(b.people) || 0, from: b.from,
         tier: ([0, 1, 3].includes(b.tier) ? b.tier : 1) as CarryTier,
         since: isDayKey(b.since) ? b.since : b.from, times: Math.max(1, Number(b.times) || 1),
+        // Absent on a log from before misses were counted (missesBefore reads its times).
+        ...(typeof b.misses === 'number' && b.misses >= 0 ? { misses: Math.floor(b.misses) } : {}),
+      })),
+      dropped: (Array.isArray(v.dropped) ? v.dropped : []).filter((b: any) => b && b.id && isDayKey(b.from)).map((b: any) => ({
+        id: String(b.id), name: String(b.name ?? ''), from: b.from, since: isDayKey(b.since) ? b.since : b.from,
+        misses: Math.max(1, Number(b.misses) || 1), people: Number(b.people) || 0,
       })),
     }
   } catch { return null }
@@ -1670,9 +1708,34 @@ async function readCarryLog(): Promise<CarryLog | null> {
 
 // A new roll's log: how long each brand has been rolling comes from the
 // last one (carryTimes).
-async function newCarryLog(to: string, moved: Moved[]): Promise<CarryLog> {
-  const times = carryTimes(await readCarryLog(), moved)
-  return { at: new Date().toISOString(), to, brands: moved.map(m => ({ ...m, ...times.get(m.id) })) }
+// misses: the morning roll's count per brand (carryMisses). A move by hand
+// (Move what's left, Move them to…) isn't a miss: the count it had stays.
+async function newCarryLog(to: string, moved: Moved[], opts: { misses?: ReadonlyMap<string, number>; dropped?: DroppedBrand[] } = {}): Promise<CarryLog> {
+  const prev = await readCarryLog()
+  const times = carryTimes(prev, moved)
+  return {
+    at: new Date().toISOString(), to,
+    brands: moved.map(m => ({ ...m, ...times.get(m.id), misses: opts.misses?.get(m.id) ?? missesBefore(prev, m.id, m.from) })),
+    ...(opts.dropped?.length ? { dropped: opts.dropped } : {}),
+  }
+}
+
+// Takes the brands that missed two days off the Schedule: their people leave
+// the day's list and wait (nothing is shelved), nothing is pinned anywhere,
+// and the system's own picks pass the brand over for DROP_HOLD_DAYS. A day
+// Leo has pinned it to himself, from today on, is his — left alone.
+async function dropMissed(drop: DropOne[], prev: CarryLog | null): Promise<DroppedBrand[]> {
+  if (!drop.length) return []
+  const brands = await prisma.brand.findMany({ where: { id: { in: drop.map(d => d.id) } }, select: { id: true, name: true } })
+  const nameOf = new Map(brands.map(b => [b.id, b.name]))
+  const stamped = drop.flatMap(d => d.stamped)
+  if (stamped.length) await prisma.target.updateMany({ where: { id: { in: stamped }, sentAt: null }, data: { queuedFor: null } })
+  const out = drop.filter(d => nameOf.has(d.id)).map(d => {
+    const p = prev && prev.to === d.from ? prev.brands.find(b => b.id === d.id) : undefined
+    return { id: d.id, name: nameOf.get(d.id)!, from: d.from, since: p?.since ?? d.from, misses: d.misses, people: d.stamped.length }
+  })
+  await noteDropped(out.map(d => d.id))
+  return out
 }
 
 async function writeCarryLog(log: CarryLog): Promise<void> {
@@ -1896,10 +1959,26 @@ async function rollOverUnsent(): Promise<void> {
       }
     }
     if (unsent.size) {
-      if (to) {
-        const { moved } = await carryBrands(unsent, to, plan)
-        if (moved.length) await writeCarryLog(await newCarryLog(to, moved))
+      // Two missed days and a brand comes off instead of carrying again
+      // (Leo, Nov 18 2026; carry.ts): in two sending days' lists with
+      // nothing sent. One that only waited for room is carried as before.
+      const prevLog = await readCarryLog()
+      const misses = carryMisses(prevLog, unsent)
+      const { carry, drop } = splitMissed(unsent, misses)
+      const dropped = await dropMissed(drop, prevLog)
+      // Off the day they missed as well, so a later look back at that day
+      // (the roll after a long gap reads the last week) never finds them
+      // still pinned and carries them after all.
+      if (dropped.length) {
+        const gone = new Set(dropped.map(d => d.id))
+        for (const k of Object.keys(plan)) if (k < today) plan[k].brandIds = plan[k].brandIds.filter(id => !gone.has(id))
       }
+      const carrying = !!to && carry.size > 0
+      if (to) {
+        const moved = carrying ? (await carryBrands(carry, to, plan)).moved : []   // writes the plan
+        if (moved.length || dropped.length) await writeCarryLog(await newCarryLog(to, moved, { misses, dropped }))
+      }
+      if (dropped.length && !carrying) await writePlan(plan)
     }
   }
   const value = JSON.stringify({ day: today, through: addDaysKey(today, -1), running: null })
@@ -1946,7 +2025,7 @@ async function readRefileLog(): Promise<RefileLog | null> {
 async function scheduleStamp(): Promise<string> {
   const keys = ['outreachPlan', 'outreachExtraDays', SKIP_DAYS_KEY, GIANTS_KEY, CARRY_KEY, CARRY_DONE_KEY,
     DAY_CLOSED_KEY, AUTO_QUEUED_KEY, PLAN_WEEK_KEY, DAY_THEME_KEY, CATEGORY_PRIORITY_KEY, OPENED_TODAY_KEY, CHOSEN_KEY,
-    LIST_DAYS_KEY, BANK_KEY]
+    LIST_DAYS_KEY, BANK_KEY, DROPPED_KEY]
   const rows = await prisma.$queryRaw<Array<{ s: string }>>`
     SELECT concat_ws('|',
       (SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM "Brand"),
@@ -2105,7 +2184,7 @@ async function dayThemeChanges(plan: OutreachPlan, date: string, cat: string | n
   const belongs = (id: string) => {
     const b = byId.get(id)
     if (!b) return false
-    return bestFit ? bestFitEligible(b, fitOf.get(id)!, qc) : b.category === theme
+    return bestFit ? bestFitEligible(b, fitOf.get(id)!, qc, { keepDropped: true }) : b.category === theme
   }
   // A planned brand that comes off today takes its people out of today's
   // queue too (as planRemoveBrand does), named on the card.
@@ -2845,11 +2924,17 @@ function brandFit(b: FitFacts, now = new Date()): FitResult {
 // and the brands OK'd one at a time). allowSkip: a day Leo gave a category
 // takes it even when that category is set to Skip — he chose it (Oct 12
 // 2026); too small stays out there too.
-function bestFitEligible(b: PlanBrand, f: FitResult, q: QueueCtx, opts: { allowSkip?: boolean } = {}): boolean {
+// A brand that came off the Schedule after two missed days (q.dropped) is
+// passed over by every day's own picks while it is held. keepDropped: the
+// two reads that aren't a pick — the Week plan list, where it waits for Leo,
+// and "does this pin belong on a Best fit day", where one he put back by
+// hand must never read "doesn't fit".
+function bestFitEligible(b: PlanBrand, f: FitResult, q: QueueCtx, opts: { allowSkip?: boolean; keepDropped?: boolean } = {}): boolean {
   return !b.passedAt && !passedNow(b) && !b.doNotEmail && b.usStatus !== 'no' && !inConversation(b)
     && !isReached(b) && !b.targets.some(wasInvited)
     && !f.ruledOut && !f.bizNote && (!f.tooSmall || q.smallOn) && (opts.allowSkip || f.priority !== 'skip')
     && !heldGiant(b, q)
+    && (opts.keepDropped || !q.dropped.has(b.id))
 }
 // A giant the system must not pick: giants are off and this one wasn't OK'd.
 function heldGiant(b: { id: string; name: string; aka: string | null; salesCents: bigint | null; liMembers: number | null }, q: QueueCtx): boolean {
@@ -3672,7 +3757,7 @@ function buildBank(ctx: BankCtx, state: BankState, opts: { day?: string } = {}) 
     if (passedNow(b)) continue
     const f = planBrandFit(b)
     const isToday = inToday(b)
-    let auto = !isToday && bestFitEligible(b, f, ctx.q)
+    let auto = !isToday && bestFitEligible(b, f, ctx.q, { keepDropped: true })
     if (!hand && !auto) continue
     const refusal = hand ? planRefusal(b, ctx.q, day) : null
     const p = previewBrandPicks(b, { forToday: false, dayStart, day, explicitAdd: hand })
@@ -10419,6 +10504,10 @@ const handlers: Record<string, Handler> = {
     const carryTo = carryLog && carryLog.to >= todayKey ? carryLog.to : null
     const carryLive = carryLog && carryTo ? carryLog.brands.filter(b => (plan[carryTo]?.brandIds ?? []).includes(b.id)) : []
     const carriedOf = new Map(carryLive.map(b => [b.id, b]))
+    // The brands that roll took off for missing two days, while they are
+    // still off every day: one Leo has put back is his again, not news.
+    const pinnedNow = pinnedDays(plan, todayKey)
+    const droppedLive = carryLog && carryTo ? (carryLog.dropped ?? []).filter(b => !pinnedNow.has(b.id)) : []
     // Every day ranks brands by Brand Fit, never reached only —
     // autoDayRanked, the list getTodayQueue fills today from: a Best fit
     // day (every day Leo hasn't given a category) every category, a day he
@@ -10682,7 +10771,9 @@ const handlers: Record<string, Handler> = {
       // (dayThemeChanges keeps it the same way).
       const finishingHere = (id: string) => { const b = brandById.get(id); return !!b && finishingSitting(b, key, extras) }
       const belongs = (id: string, cat: string | null) =>
-        finishingHere(id) || (theme === BEST_FIT_DAY ? bestEligible.has(id) : cat === theme)
+        // (A brand held after two missed days that Leo pinned back by hand
+        // belongs: the hold is on the system's picks, not his.)
+        finishingHere(id) || (theme === BEST_FIT_DAY ? bestEligible.has(id) || q.dropped.has(id) : cat === theme)
       const offPins = pinned.filter(p => !(isToday && startedToday.has(p.id)) && !belongs(p.id, p.category)).length
       const offQueued = new Set(alreadyIn.filter(t => !startedToday.has(t.brand.id) && !belongs(t.brand.id, t.brand.category)).map(t => t.brand.id)).size
       return {
@@ -10863,7 +10954,8 @@ const handlers: Record<string, Handler> = {
       // Leo's category priority (Top / Middle / Low / Skip): the day
       // menus list categories in this order.
       priority: Object.fromEntries(CATEGORY_KEYS.map(k => [k, categoryPriority(k)])),
-      carry: carryTo && carryLive.length ? { at: carryLog!.at, to: carryTo, brands: carryLive } : null,
+      carry: carryTo && (carryLive.length || droppedLive.length)
+        ? { at: carryLog!.at, to: carryTo, brands: carryLive, dropped: droppedLive, holdDays: DROP_HOLD_DAYS } : null,
       extraDays: [...extras].sort(),
       // Days Leo took off (skip-day): the "Thu off — Undo" chips, and
       // where each one's plan went.
@@ -11420,7 +11512,7 @@ const handlers: Record<string, Handler> = {
     type Cand = { b: PlanBrand; label: ContactsLabel; people: PreviewPerson[]; fit: number; f: FitResult }
     let hiddenSmall = 0
     const cands: Cand[] = brands
-      .filter(b => !isReached(b) && !b.passedAt && !passedNow(b) && !b.doNotEmail && !inConversation(b) && !heldGiant(b, q) && !pinnedOn.has(b.id) && !excluded.has(b.id) && !inTodayQueue(b) && !onTodayCol.has(b.id))
+      .filter(b => !isReached(b) && !b.passedAt && !passedNow(b) && !b.doNotEmail && !inConversation(b) && !heldGiant(b, q) && !q.dropped.has(b.id) && !pinnedOn.has(b.id) && !excluded.has(b.id) && !inTodayQueue(b) && !onTodayCol.has(b.id))
       .map(b => ({ b, f: planBrandFit(b) }))
       .filter(({ f }) => !f.ruledOut)
       .map(({ b, f }) => ({ b, f, fit: f.score, label: contactLabel(b, b.contacts), people: previewBrandPicks(b, { forToday: false, dayStart }).people }))
@@ -17170,7 +17262,8 @@ const handlers: Record<string, Handler> = {
       }),
       readQueueCtx(),
     ])
-    const brands = allBrands.filter(b => !heldGiant(b, q))
+    // (Nor one that came off the Schedule after two missed days, while held.)
+    const brands = allBrands.filter(b => !heldGiant(b, q) && !q.dropped.has(b.id))
 
     // Brand-level reply rate per category.
     const emailedByCat: Record<string, Set<string>> = {}

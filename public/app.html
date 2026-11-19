@@ -16837,7 +16837,20 @@ function renderSchedCarry() {
   var box = document.getElementById('sched-carry');
   if (!box) return;
   var c = SCHED.carry;
-  if (!c || !c.brands || !c.brands.length) { box.innerHTML = ''; return; }
+  var off = (c && c.dropped) || [];
+  if (!c || ((!c.brands || !c.brands.length) && !off.length)) { box.innerHTML = ''; return; }
+  // Two missed days and a brand comes off (Leo, Nov 18 2026): in two sending
+  // days' lists with nothing sent. It waits on the Week plan list; nothing
+  // picks it by itself for holdDays; a day picked by hand puts it back.
+  var offNames = off.map(function (b) { return b.name; });
+  var offHtml = off.length ? '<div class="sd-carry sd-cameoff">' +
+    '<b>Came off</b>' +
+    '<span>' + sdPlural(off.length, 'brand', 'brands') + ' sat on two sending days with nothing sent, so ' +
+      (off.length === 1 ? 'it’s' : 'they’re') + ' back on your list:</span>' +
+    '<span class="sd-dim">' + esc(offNames.slice(0, 8).join(', ') + (offNames.length > 8 ? ' +' + (offNames.length - 8) + ' more' : '')) + '</span>' +
+    '<span class="sd-dim">No day picks ' + (off.length === 1 ? 'it' : 'them') + ' by itself for ' + (c.holdDays || 14) + ' days — put one on a day to bring it back.</span>' +
+  '</div>' : '';
+  if (!c.brands || !c.brands.length) { box.innerHTML = offHtml; return; }
   var froms = [];
   c.brands.forEach(function (b) { if (froms.indexOf(b.from) === -1) froms.push(b.from); });
   froms.sort();
@@ -16852,7 +16865,7 @@ function renderSchedCarry() {
     '<select class="inp sd-mini" data-sdcarry="1" title="Move all of them to another day">' +
       '<option value="">Move them to…</option>' + sdLaterTargets(c.to) +
     '</select>' +
-  '</div>';
+  '</div>' + offHtml;
 }
 
 // One brand from "The rest of …": who would go, and a menu of the
