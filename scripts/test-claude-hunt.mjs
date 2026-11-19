@@ -12,15 +12,41 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { judgeHuntRow, knownKeys, HUNT_LANES, HUNT_SOURCES, huntLabel } = await import(pathToFileURL(join(out, 'claude-hunt.js')).href)
+const { judgeHuntRow, knownKeys, HUNT_LANES, HUNT_SOURCES, huntLabel, huntLanes } = await import(pathToFileURL(join(out, 'claude-hunt.js')).href)
 
 let n = 0
 function t(name, fn) { fn(); n++; console.log('  ok — ' + name) }
 
 const good = { name: 'Nova Fizz', category: 'energy', signals: ['genz', 'midsize'], website: 'novafizz.com', reason: 'r', activation: 'a' }
 
-t('priority lanes are the seven Leo named', () => {
-  assert.deepEqual(HUNT_LANES.sort(), ['apparel', 'athletic', 'electrolytes', 'energy', 'nicotine', 'rtd', 'spirits'])
+// Leo, Nov 18 2026: the hunt searches his Top categories — it was Stock
+// take's seven lanes, which still had clothing and athletic (Low).
+t('the hunt searches Leo\'s Top categories — never clothing or athletic by default', () => {
+  assert.deepEqual([...HUNT_LANES].sort(), ['alcohol', 'beverage', 'electrolytes', 'energy', 'nicotine', 'rtd', 'spirits'])
+  assert.deepEqual(huntLanes({}), HUNT_LANES)
+  assert.deepEqual(huntLanes(null), HUNT_LANES)
+})
+t('it follows Category priority: a category he moves to Top is searched, one he moves off is not', () => {
+  const mine = huntLanes({ beauty: 'top', nicotine: 'skip', energy: 'low', betting: 'skip' })
+  assert.ok(mine.includes('beauty')); assert.ok(!mine.includes('nicotine')); assert.ok(!mine.includes('energy'))
+  assert.ok(!mine.includes('betting')); assert.ok(!mine.includes('apparel'))
+  // The holding pen is never a lane; a value that isn't a priority = the default.
+  assert.ok(!huntLanes({ unresolved: 'top' }).includes('unresolved'))
+  assert.ok(huntLanes({ energy: 'highest' }).includes('energy'))
+  // Everything taken off Top: the defaults, never an empty hunt.
+  const none = Object.fromEntries(HUNT_LANES.map(k => [k, 'low']))
+  assert.deepEqual(huntLanes(none), HUNT_LANES)
+})
+t('a row is judged by the lanes of the day', () => {
+  const mine = huntLanes({ beauty: 'top', energy: 'low' })
+  assert.equal(judgeHuntRow({ ...good, category: 'beauty' }, new Set(), mine).ok, true)
+  const no = judgeHuntRow(good, new Set(), mine)
+  assert.equal(no.ok, false); assert.match(no.why, /not one of the Top categories \(energy\)/)
+  // Soda / water and Alcohol (other) are Top, so they save now; clothing doesn't.
+  assert.equal(judgeHuntRow({ ...good, category: 'beverage' }, new Set()).ok, true)
+  assert.equal(judgeHuntRow({ ...good, category: 'alcohol' }, new Set()).ok, true)
+  assert.equal(judgeHuntRow({ ...good, category: 'apparel' }, new Set()).ok, false)
+  assert.equal(judgeHuntRow({ ...good, category: 'athletic' }, new Set()).ok, false)
 })
 t('Leo\'s sites to search first', () => {
   assert.deepEqual(HUNT_SOURCES, ['bevnet.com', 'brewbound.com', 'frontofficesports.com', 'cpglatest.com'])
@@ -40,9 +66,9 @@ t('no website and no source → refused, even with a LinkedIn page', () => {
   const v = judgeHuntRow({ ...good, website: '', linkedinUrl: 'https://www.linkedin.com/company/nova' }, new Set())
   assert.equal(v.ok, false); assert.match(v.why, /website or source/)
 })
-t('outside the priority lanes → refused', () => {
+t('outside the Top categories → refused', () => {
   const v = judgeHuntRow({ ...good, category: 'fintech' }, new Set())
-  assert.equal(v.ok, false); assert.match(v.why, /priority lane/)
+  assert.equal(v.ok, false); assert.match(v.why, /not one of the Top categories \(fintech\)/)
 })
 t('no recognised signal → refused; unknown signals dropped', () => {
   assert.equal(judgeHuntRow({ ...good, signals: ['viral'] }, new Set()).ok, false)

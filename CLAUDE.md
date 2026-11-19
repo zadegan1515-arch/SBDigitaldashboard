@@ -1476,7 +1476,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `REPORT_TOKEN`; the old body `token` = INGEST_TOKEN still accepted). `GET` = lanes, `leftToday`, every
   known name (brands + aka + earlier finds; names only) + `sources` = Leo's sites to search first
   (`HUNT_SOURCES`: bevnet.com, brewbound.com, frontofficesports.com, cpglatest.com — add one there). Rules pure in `src/lib/claude-hunt.ts`
-  (`node scripts/test-claude-hunt.mjs`): **priority lanes only**, a website or source link (LinkedIn
+  (`node scripts/test-claude-hunt.mjs`): **Leo's Top categories only** (Leo, Nov 18 2026, "fix both": `huntLanes` =
+  every category on Top in his Category priority, read from the Setting on each call, so `lanes` follows him when he
+  changes one — on that day electrolytes, energy, beverage, rtd, spirits, alcohol, nicotine; it was Stock take's seven
+  priority lanes, which still had clothing and athletic (Low since Oct 7), so most finds came back C or D, and never
+  searched Soda / water or Alcohol (other); a row filed anywhere else is refused "not one of the Top categories";
+  the routine's prompt says to hunt the lanes the GET returns), a website or source link (LinkedIn
   page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
   never a known brand, **never a giant** (Leo, Oct 6 2026: `src/lib/giants.ts` — household names, brands of the big parents in parents.ts, $1B+ sales via the row's `salesUsd`; GET sends the list as `reject`; the LinkedIn lookalikes skip them too, plus 1M+ followers — roster brands are untouched), **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
@@ -1492,7 +1497,12 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   (`readFind`, no model call) — sales in the $10M–$500M sweet spot 25 ($1M–$10M 12, $500M–$1B 10) or raised $5M+ 20 / $1M+ 10
   (a parent named or a giant = 0, too big for now), stores (1,000+ 15 / 300+ 10 / fewer 5 / "growing" sign 6, +5 for a big
   retailer named), already pays for college / music (official partner, licensed, NIL, sponsor, tour, festival 20 · the hunt's
-  sign 12 · only popular with students 6), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
+  sign 12 · only popular with students 6), **every point from the brand's write-up, never our pitch idea** (Leo, Nov 18
+  2026, "fix both": `scoreFind` reads `writeUp` alone — the money, shelf, college / music, audience and growth lines used
+  to read the write-up **plus our activation idea**, so "sampling at a campus concert" or "a QR code for a Walmart
+  coupon" in OUR idea scored as the brand's own spend or shelf: 117 of the 365 finds waiting scored higher for it and 20
+  were an A or B only because of it — Protein Pop 76 A → 56 B; that day the waiting finds went 9 / 51 / 98 / 207 →
+  5 / 39 / 86 / 235. So the hunt must put the facts in `reason`), **fits a student's day** (Oct 18 2026 — the Brand Fit rule above, read from the
   find's write-up (+ name for energy), never the pitch: studying / focus 20, nights out 15, game day / campus 15, energy /
   hydration 10), growing fast 10 (since Oct 18 also a launch, from the write-up only — `launchIn`: "first mass-retail",
   "national launch", "rolling out to Kroger", "expanding into Walmart", "added 400 stores", "into Target", "went
@@ -1503,7 +1513,7 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   A find on the roster grades on its brand's own Brand
   Fit. Letters **A 65+ / B 50+ / C 40+ / D** (Skip / not US / closed = D, too small caps at C) — on Oct 15 the 171 finds split
   ~17 / 52 / 63 / 39 (Brand Fit alone had made 137 of them A); on Oct 18, with the student fit and launches, the 186 waiting
-  ~30 / 66 / 53 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find, 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
+  ~30 / 66 / 53 / 37 (was 2 / 64 / 67 / 53) and Neuro 46 C → 76 A as a find (70 since Nov 18 2026: 6 of those points came from our pitch), 63 B → 83 A on the roster. The page: a score box per row (number + letter; a click opens every
   point), the points as chips under the why, big **Accept** / **Deny** buttons (`addDiscoveredBrand` / `dismissDiscovered`), a
   heading per grade under **Best grade first** (default; Newest first) and a grade filter. **Add all A's** (Leo, Oct 13 2026 — 88 of 106 waiting finds were A): the To review bar's button (`dcBulkOpen`,
   `#dc-bulk`) → `addDiscoveredBulk({ grade: 'A' })` preview = every A waiting, each as it'd be filed (`discoveryCategory`,
@@ -1519,6 +1529,29 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   named. Every find linked to a brand that goes returns to To review (also those linked by name since). Confirm sends
   the preview's `expect`; the delete only takes brands still bare (else `stale`, nothing changes). `node scripts/test-discover.js`,
   `E2E_DATABASE_URL=$(bash scripts/e2e-postgres.sh) node scripts/test-discover-bulk-e2e.js`.
+- **People for brands with nobody on file — a round of open-web research** (Leo, Nov 18 2026: "i feel like im
+  runnning out of good brands to reach out to"; his picks: reach out again, find people for the empty brands, an extra
+  hunt). What was true that day: the queue could pick 144 brands but only 11 scored 65+; the good ones not reached yet
+  (≈139) sat with **nobody on file** (72 — 46 of them waiting on "Which LinkedIn page is theirs?"), on a Pass (31) or
+  held as too small (21); and 107 good brands already reached had decision makers never invited (Week plan → Reach out
+  again). Read it again with `brandSupply` (ids per pile) joined to `listBrandFit` (scores) and `listBrands({ coverage:
+  true })` (`cover.state`: page / next / resting / noPage). **The round** (any Claude session, no paid lookup): for the
+  good brands in state `page` / `resting`, find on the open web (a) the brand's own LinkedIn company page — judge the
+  candidates already on the pick list (`linkedinPeople.pageReview`) first — and (b) up to 3 people there now (founder /
+  CEO, partnerships, events, marketing) with a profile link **seen in a search result, never built**; LinkedIn and most
+  brand sites can't be opened from a cloud session, so it rests on search titles and snippets — mark each sure / unsure.
+  **Show Leo the whole list first** (pages, people, the unsure ones apart, brands with no page of their own); on his
+  yes save only the sure ones: `liPagePick({ brandId, url })` per page (the brand leaves his pick list and the fill
+  reads it next run; refused when that page is already another brand's — Clear Cut Hero / Phocus share a maker) and
+  `importContacts({ rows: [{ brandName, name, title, linkedinUrl, notes }], source: 'research' })` (no preview of its
+  own; by exact brand name, dupes by name skipped, stopped people refused). Nov 18: 50 brands → 24 pages and 32 people
+  at 25 brands saved; 21 had no page of their own (a product line of a bigger company — Mojo / Swisher, Suerox /
+  Genomma Lab, Black Rifle Energy — or too new). **Reach out again in bulk**: `weekBank({ week })` → `again.rows`
+  (fit, `fresh` people, `going`) → `reachAgain({ brandId, date, contactIds })` per brand after Leo has seen brands,
+  days and people; pass `contactIds` to leave out people whose title is plainly wrong (an emcee, a sponsored athlete,
+  another company's founder) — and a wrong one already waiting in the brand's pool comes along with the pin
+  (`passContact` takes them out). A day past its 35 doesn't refuse: the brands **wait** there and roll to the next
+  sending day (Leo asked for all 23 on one Thursday that was already full — 22 waited).
 - **"Add a brand" chat** (Leo, Oct 2026: "send a picture of a brand from instagram or type in a name
   and it will find the brand … and add it"). A saved Claude cloud session ("Add a brand", repo attached,
   `DASHBOARD_TOKEN` in its environment — no API spend) follows `docs/add-a-brand-chat.md`: reads the
