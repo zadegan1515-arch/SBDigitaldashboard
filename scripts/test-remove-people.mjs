@@ -15,14 +15,14 @@ for (const f of readdirSync(out).filter(f => f.endsWith('.js'))) {
   const p = join(out, f)
   writeFileSync(p, readFileSync(p, 'utf8').replace(/from '(\.\/[^']+)'/g, "from '$1.js'"))
 }
-const { stayWhy, sortRemoval, removalSig, standingText, readRemovalLog, alreadyBack, STAY_TEXT } = await import(pathToFileURL(join(out, 'remove-people.js')).href)
+const { stayWhy, sortRemoval, removalSig, standingText, readRemovalLog, alreadyBack, emailIsHistory, STAY_TEXT } = await import(pathToFileURL(join(out, 'remove-people.js')).href)
 const { actionText } = await import(pathToFileURL(join(out, 'claude-day.js')).href)
 
 let n = 0
 const t = (name, fn) => { fn(); n++; console.log('  ok — ' + name) }
 const row = (x = {}) => ({
   status: 'queued', sentAt: null, emailedAt: null, dmSentAt: null, repliedAt: null, handDeclinedAt: null,
-  callAt: null, callBookedAt: null, emails: 0, instantly: false, drafts: 0, shelved: false, ...x,
+  callAt: null, callBookedAt: null, emails: 0, emailDrafts: 0, instantly: false, drafts: 0, shelved: false, ...x,
 })
 const person = (id, x = {}, targets = [row()]) => ({ id, name: 'Person ' + id, title: 'Owner', doNotContactAt: null, repOutreach: 0, targets, ...x })
 const day = new Date('2026-11-12T15:00:00Z')
@@ -52,18 +52,26 @@ t('anyone written to stays: an invite, an accept logged without a date, a DM, a 
 
 t('a call, emails on file, an Instantly hand-over and Elizabeth’s list each keep the person', () => {
   assert.equal(stayWhy(person('a', {}, [row({ callBookedAt: day })])), 'call')
-  assert.equal(stayWhy(person('b', {}, [row({ emails: 1 })])), 'emails', 'a drafted email counts')
+  assert.equal(stayWhy(person('b', {}, [row({ emails: 1 })])), 'emails', 'an email that went out or came in')
+  assert.equal(stayWhy(person('b2', {}, [row({ status: 'drafted', emailDrafts: 1 })])), null, 'a draft that never went out keeps nobody (Kasey Strickland at Rogue)')
+  assert.equal(emailIsHistory({ direction: 'out', status: 'draft', sentAt: null }), false)
+  assert.equal(emailIsHistory({ direction: 'out', status: 'approved', sentAt: null }), false)
+  assert.equal(emailIsHistory({ direction: 'out', status: 'failed', sentAt: null }), false)
+  assert.equal(emailIsHistory({ direction: 'out', status: 'sent', sentAt: null }), true)
+  assert.equal(emailIsHistory({ direction: 'out', status: 'draft', sentAt: day }), true)
+  assert.equal(emailIsHistory({ direction: 'in', status: 'received', sentAt: null }), true)
   assert.equal(stayWhy(person('c', {}, [row({ instantly: true })])), 'instantly')
   assert.equal(stayWhy(person('d', { repOutreach: 1 })), 'elizabeth')
   for (const k of ['stopped', 'reached', 'call', 'emails', 'instantly', 'elizabeth']) assert.ok(STAY_TEXT[k], k + ' has words')
 })
 
 t('the preview sorts who goes and who stays, each id once, and names ids that aren’t at the brand', () => {
-  const rows = [person('a', {}, [row({ status: 'drafted', drafts: 2 })]), person('b', {}, [row({ status: 'sent', sentAt: day })]), person('c', {}, [])]
+  const rows = [person('a', {}, [row({ status: 'drafted', drafts: 2, emailDrafts: 1 })]), person('b', {}, [row({ status: 'sent', sentAt: day })]), person('c', {}, [])]
   const r = sortRemoval(['a', 'b', 'c', 'a', 'zz'], rows)
   assert.deepEqual(r.go.map(g => g.id), ['a', 'c'])
   assert.equal(r.go[0].standing, 'in the queue, note drafted')
   assert.equal(r.go[0].drafts, 2)
+  assert.equal(r.go[0].emailDrafts, 1, 'the unsent email is named as going with them')
   assert.equal(r.go[1].standing, 'not in the queue')
   assert.deepEqual(r.stay.map(s => [s.id, s.why]), [['b', 'reached']])
   assert.deepEqual(r.missing, ['zz'])

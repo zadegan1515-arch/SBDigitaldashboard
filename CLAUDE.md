@@ -1600,7 +1600,8 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   queue / note drafted / next in line / left out / not in the queue), who **stays and why**, ids that aren't at the brand,
   and `expect`. Rules pure in `src/lib/remove-people.ts` — never someone who said they don't want to continue (the no
   stays on file), anyone written to (an invite, an accept logged without a date, a DM, a reply, a hand email, a
-  withdrawn invite), a call, emails on the row, an Instantly hand-over, or Elizabeth's list. `confirm` + the preview's
+  withdrawn invite), a call, an email that went out or came in (`emailIsHistory` — a draft that never went out keeps
+  nobody and goes with the person, `emailDrafts` in the preview), an Instantly hand-over, or Elizabeth's list. `confirm` + the preview's
   `expect` removes exactly those people (their queue rows and drafts go with them) in one transaction that checks once
   more that nobody was written to since; another list, no stamp or a change since → `stale`, shown again. Setting
   `peopleRemovedLast` keeps the last removal for `undoRemovePeople` (preview names who comes back; someone saved again

@@ -82,7 +82,9 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await tg('t-sent', 'sent', { status: 'sent', sentAt: day });
     await tg('t-stop', 'stop');
     await tg('t-mail', 'mail');
-    await prisma.emailMessage.create({ data: { targetId: 't-mail', direction: 'out', kind: 'intro', status: 'draft', subject: 'Hi', body: 'Hi' } });
+    await prisma.emailMessage.create({ data: { targetId: 't-mail', direction: 'out', kind: 'intro', status: 'sent', sentAt: day, subject: 'Hi', body: 'Hi' } });
+    // An intro the email machine drafted and never sent: no history, it goes with Bill.
+    await prisma.emailMessage.create({ data: { id: 'e-bill', targetId: 't-bill', direction: 'out', kind: 'intro', status: 'draft', subject: 'Hi', body: 'Hi' } });
     await prisma.repOutreach.create({ data: { rep: 'elizabeth', brandId: 'rogue', contactId: 'liz', brandName: 'Rogue', name: 'Liz Listed', channel: 'email', status: 'queued' } });
 
     const fitness = ['bill', 'jon', 'leia', 'tom'];
@@ -93,6 +95,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(pv.preview, true);
     assert.deepEqual(pv.remove.map(p => p.id).sort(), [...fitness].sort());
     assert.equal(pv.remove.find(p => p.id === 'bill').standing, 'in the queue, note drafted');
+    assert.equal(pv.remove.find(p => p.id === 'bill').emailDrafts, 1, 'an unsent email draft keeps nobody');
     assert.equal(pv.remove.find(p => p.id === 'jon').standing, 'left out of the queue');
     assert.equal(pv.remove.find(p => p.id === 'leia').standing, 'next in line');
     assert.equal(pv.remove.find(p => p.id === 'tom').standing, 'not in the queue');
@@ -113,6 +116,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.equal(r.stay.find(p => p.id === 'tom').why, 'reached');
     assert.equal(await prisma.contact.count({ where: { brandId: 'rogue' } }), 9);
     await prisma.target.delete({ where: { id: 't-tom' } });
+    await prisma.emailMessage.update({ where: { id: 'e-bill' }, data: { status: 'sent', sentAt: new Date() } });
+    r = await data('removePeople', { brandId: 'rogue', contactIds: asked, confirm: true, expect: pv.expect });
+    assert.equal(r.stale, true, 'Bill\'s email went out since the preview');
+    assert.equal(r.stay.find(p => p.id === 'bill').why, 'emails');
+    await prisma.emailMessage.update({ where: { id: 'e-bill' }, data: { status: 'draft', sentAt: null } });
     ok('no stamp, another list, or an invite sent since the preview: stale, shown again, nobody removed');
 
     // 3. Confirm: exactly the previewed people go, with their queue rows and drafts.
@@ -123,6 +131,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual(left, ['liz', 'mail', 'real', 'sent', 'stop']);
     assert.equal(await prisma.target.count({ where: { contactId: { in: fitness } } }), 0);
     assert.equal(await prisma.draft.count({ where: { targetId: 't-bill' } }), 0);
+    assert.equal(await prisma.emailMessage.count({ where: { id: 'e-bill' } }), 0, 'the unsent draft went with him');
+    assert.equal(await prisma.emailMessage.count({ where: { targetId: 't-mail' } }), 1, 'a sent email stays with its person');
     assert.ok(await prisma.contact.findUnique({ where: { id: 'else' } }), 'another brand\'s person is never touched');
     assert.ok((await prisma.contact.findUnique({ where: { id: 'stop' } })).doNotContactAt, 'the no stays on file');
     assert.equal((await prisma.target.findUnique({ where: { id: 't-sent' } })).status, 'sent');

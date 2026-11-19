@@ -14,7 +14,8 @@
 //     file, or the same person could be added and written to again);
 //   - someone already written to (an invite, a message, an email, a reply,
 //     a call) — that history is what the brand's Reached tag, Results and
-//     the tracker read;
+//     the tracker read. An email draft that never went out is not history
+//     (Kasey Strickland at Rogue: one intro drafted in August, never sent);
 //   - someone on Elizabeth's list or handed to Instantly.
 // Those are set aside by other means (Doesn't want to continue, Shelve).
 
@@ -33,7 +34,8 @@ export type RemoveRow = {
     handDeclinedAt: Date | string | null
     callAt: Date | string | null
     callBookedAt: Date | string | null
-    emails: number             // emails drafted, sent or received on the row
+    emails: number             // emails that went out or came in on the row
+    emailDrafts: number        // emails written and never sent — they go with the person
     instantly: boolean         // handed to an Instantly campaign
     drafts: number             // LinkedIn drafts written for them
     shelved: boolean
@@ -59,7 +61,7 @@ export const STAY_TEXT: Record<StayWhy, string> = {
   stopped: 'said they don’t want to continue — that stays on file',
   reached: 'already reached out to — the history stays',
   call: 'has a call booked or held',
-  emails: 'has emails on file',
+  emails: 'has emails sent or received on file',
   instantly: 'handed to an Instantly campaign',
   elizabeth: 'on Elizabeth’s list',
 }
@@ -74,12 +76,17 @@ export function standingText(p: RemoveRow): string {
   return drafts ? 'in the queue, note drafted' : 'in the queue'
 }
 
+// An email on a row that counts as history: it went out, or it came in.
+export function emailIsHistory(e: { direction?: string | null; status?: string | null; sentAt?: Date | string | null }): boolean {
+  return e.direction === 'in' || !!e.sentAt || ['sent', 'replied', 'received'].includes(String(e.status || ''))
+}
+
 // Sorted into who goes and who stays. Ids asked for that aren't at the
 // brand are the caller's to name (`missing`).
 export function sortRemoval(asked: string[], rows: RemoveRow[]) {
   const byId = new Map(rows.map(r => [r.id, r]))
   const ids = Array.from(new Set(asked.map(String)))
-  const go: Array<{ id: string; name: string; title: string | null; standing: string; drafts: number }> = []
+  const go: Array<{ id: string; name: string; title: string | null; standing: string; drafts: number; emailDrafts: number }> = []
   const stay: Array<{ id: string; name: string; title: string | null; why: StayWhy; text: string }> = []
   const missing: string[] = []
   for (const id of ids) {
@@ -87,7 +94,10 @@ export function sortRemoval(asked: string[], rows: RemoveRow[]) {
     if (!p) { missing.push(id); continue }
     const why = stayWhy(p)
     if (why) stay.push({ id: p.id, name: p.name, title: p.title, why, text: STAY_TEXT[why] })
-    else go.push({ id: p.id, name: p.name, title: p.title, standing: standingText(p), drafts: p.targets.reduce((n, x) => n + x.drafts, 0) })
+    else go.push({
+      id: p.id, name: p.name, title: p.title, standing: standingText(p),
+      drafts: p.targets.reduce((n, x) => n + x.drafts, 0), emailDrafts: p.targets.reduce((n, x) => n + x.emailDrafts, 0),
+    })
   }
   return { go, stay, missing }
 }

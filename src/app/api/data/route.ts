@@ -119,7 +119,7 @@ import { PLAN_BRAND_SELECT, SENT_EMAIL, loadPlanBrands, type PlanBrand } from '@
 import { parseSkipDays, dayMoveShape, undoDayMove, type SkipLog } from '@/lib/skip-day'
 import { CHOSEN_KEY, readChosenIds, noteChosenIds } from '@/lib/chosen'
 import { stopIndex, stoppedMatch, stopWords, stopKeys } from '@/lib/do-not-contact'
-import { sortRemoval, removalSig, readRemovalLog, alreadyBack, type RemoveRow, type Removed, type RemovalLog } from '@/lib/remove-people'
+import { sortRemoval, removalSig, readRemovalLog, alreadyBack, emailIsHistory, type RemoveRow, type Removed, type RemovalLog } from '@/lib/remove-people'
 import { readMisses, writeMisses, addMiss, suggestBrands, addAka, parseSponsorUnitedRef, nameKey } from '@/lib/brand-match'
 import { isAccepted, acceptedWhen, acceptedStage } from '@/lib/accepted'
 import {
@@ -9614,7 +9614,8 @@ const handlers: Record<string, Handler> = {
   // pouch had seven people from Rogue Fitness, another company, on it —
   // "remove them"). Rules pure in src/lib/remove-people.ts: never someone
   // who said they don't want to continue, was already written to, has a
-  // call or emails on file, is on Elizabeth's list or in Instantly.
+  // call or emails sent or received, is on Elizabeth's list or in
+  // Instantly (an email draft that never went out goes with the person).
   // Without `confirm` it only names who would go, how each stands, and who
   // stays and why. Confirm sends the preview's `expect`; a list that
   // changed since is shown again (`stale`). One transaction, a copy kept
@@ -9628,7 +9629,12 @@ const handlers: Record<string, Handler> = {
     const found = await prisma.contact.findMany({
       where: { id: { in: asked }, brandId: brand.id },
       include: {
-        targets: { include: { instantly: { select: { id: true } }, _count: { select: { emails: true, drafts: true } } } },
+        targets: {
+          include: {
+            instantly: { select: { id: true } }, emails: { select: { direction: true, status: true, sentAt: true } },
+            _count: { select: { drafts: true } },
+          },
+        },
         _count: { select: { repOutreach: true } },
       },
     })
@@ -9637,7 +9643,8 @@ const handlers: Record<string, Handler> = {
       targets: c.targets.map(t => ({
         status: t.status, sentAt: t.sentAt, emailedAt: t.emailedAt, dmSentAt: t.dmSentAt, repliedAt: t.repliedAt,
         handDeclinedAt: t.handDeclinedAt, callAt: t.callAt, callBookedAt: t.callBookedAt,
-        emails: t._count.emails, instantly: !!t.instantly, drafts: t._count.drafts, shelved: t.shelved,
+        emails: t.emails.filter(emailIsHistory).length, emailDrafts: t.emails.filter(e => !emailIsHistory(e)).length,
+        instantly: !!t.instantly, drafts: t._count.drafts, shelved: t.shelved,
       })),
     }))
     const { go, stay, missing } = sortRemoval(asked, rows)
@@ -9671,6 +9678,7 @@ const handlers: Record<string, Handler> = {
           OR: [
             { sentAt: { not: null } }, { emailedAt: { not: null } }, { dmSentAt: { not: null } }, { repliedAt: { not: null } },
             { handDeclinedAt: { not: null } }, { status: { in: ['sent', 'accepted', 'replied', 'converted', 'declined'] } },
+            { emails: { some: { OR: [{ direction: 'in' }, { sentAt: { not: null } }, { status: { in: ['sent', 'replied', 'received'] } }] } } },
           ],
         },
       })
