@@ -57,9 +57,9 @@ const BRAND = {
   fit: {
     ...fit(88, { usUnknown: false }),
     reasons: [
-      { good: true, text: 'raised $30M · last round 2024-03', points: 36 },
-      { good: true, text: 'already sponsors college / music', points: 20 },
-      { good: false, text: 'no one we can reach yet', points: 0 },
+      { good: true, text: 'raised $30M · last round 2024-03', points: 41 },
+      { good: true, text: 'already sponsors college / music', points: 25 },
+      { good: null, text: 'what it sells isn’t on file', points: 0 },
     ],
   },
 };
@@ -206,7 +206,7 @@ async function main() {
     const fitLine = await page.textContent('#b-fit');
     assert.match(fitLine, /Fit 88/);
     assert.match(fitLine, /raised \$30M/);
-    assert.match(fitLine, /no one we can reach yet/);
+    assert.match(fitLine, /what it sells isn’t on file/);
     assert.match(await page.textContent('#brand-body'), /\$12\.3M a year/);
     await page.evaluate(() => { document.querySelectorAll('#brand-body details.fold')[0].open = true; });
     await page.click('#b-edit-toggle');

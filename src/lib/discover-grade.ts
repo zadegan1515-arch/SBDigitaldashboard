@@ -8,7 +8,7 @@
 // for college / music, fits a student's day (made for studying, nights out,
 // game day, energy — Oct 18 2026), growing fast. Brand Fit couldn't tell the hunt's finds
 // apart (137 of 171 were an A on category and signs alone). A find already on
-// the roster uses that brand's own Brand Fit (facts, people, size).
+// the roster uses that brand's own Brand Fit (facts, size, category).
 //
 // Letters (set so the 171 finds of Oct 15 2026 split about 17 / 52 / 63 / 39;
 // a Top category that pays for college, nothing else known, is 45 = C):
@@ -55,8 +55,10 @@ export function hasSign(signals: string | null | undefined, sign: string): boole
   return String(signals ?? '').split(',').map(s => s.trim()).includes(sign)
 }
 
-// text = the write-up and our pitch idea; name + writeUp = what the brand is
-// (the student fit and launches read only that).
+// name + writeUp = what the brand is and has proved; every point is read from
+// that (find-evidence.ts). Our pitch idea is never passed in — it used to be,
+// as `text`, and scored as the brand's own spend (Nov 18 2026). `text` is
+// only the write-up for a caller that has no `writeUp`.
 type FindRow = {
   category: string | null; signals?: string | null; hasParent?: boolean; giant?: string | null; text?: string | null
   name?: string | null; writeUp?: string | null

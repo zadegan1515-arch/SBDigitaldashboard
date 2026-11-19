@@ -15,8 +15,15 @@
 //   - Category priority next (Oct 7 2026, below): Top / Middle / Low /
 //     Skip, Leo's ranking — betting, alcohol, drinks, nicotine at the top,
 //     clothing and tech at the bottom.
-//   - Also counts: already sponsors college / music, people we can reach
-//     on file, and how well the category converts.
+//   - Also counts: already sponsors college / music.
+//   - Likely to buy, not likely to answer (Leo, Nov 19 2026): "people we can
+//     reach" (10) and the category's accept rate (5) came out — the first is
+//     readiness, which the queue already ranks (Ready before short) and which
+//     pushed brands that need people to the back of the LinkedIn fill; the
+//     second measured answering, and the score never predicted accepts (65+
+//     20.3%, 50–64 19.8%, under 50 20.7% over 681 invites). Their 15 points
+//     went to the buying signals: college / music sponsorships 15 → 25,
+//     money 40 → 45 (every money and size step × 1.125).
 //   - Added by Leo (Oct 19 2026: "brands that we add from Claude, like the
 //     add a brand tab, or add a brand chat … should have priority … plus
 //     five points"): a brand made by the Add a brand chat (source 'chat')
@@ -103,9 +110,6 @@ export interface FitInput {
   bizStatus?: string | null
   acquiredBy?: string | null
   researchedAt?: Date | string | null
-  reachable: number // people we can write to (email or LinkedIn)
-  need: number // threads the brand wants open (contactLabel's need)
-  acceptRate?: number | null // the category's smoothed accept rate, 0..1
   priority?: Priority // the category's priority (default from DEFAULT_CATEGORY_PRIORITY)
   giant?: string | null // giants.ts's reason it's a giant (queue-rules giantOf), or null
   source?: string | null // how the brand came in — 'chat' / 'site' = Leo added it (+5)
@@ -201,17 +205,18 @@ export function isTooSmall(b: { salesCents?: number | null; liMembers?: number |
   return { tooSmall: false, why: null, size }
 }
 
-// Money: up to 40 points, whichever of sales / funding says more. The
+// Money: up to 45 points, whichever of sales / funding says more. The
 // sweet spot is $10M–$500M in sales: money to spend, not too big.
 export const SWEET_SALES_MIN_CENTS = 10_000_000 * 100
 export const SWEET_SALES_MAX_CENTS = 500_000_000 * 100
 const GIANT_SALES_CENTS = 1_000_000_000 * 100
-const GIANT_POINTS = 8
+const GIANT_POINTS = 9
+export const MONEY_MAX = 45
 function salesPoints(c: number): number {
   if (c >= GIANT_SALES_CENTS) return GIANT_POINTS
-  if (c > SWEET_SALES_MAX_CENTS) return 24
-  if (c >= SWEET_SALES_MIN_CENTS) return 40
-  if (c >= TOO_SMALL_SALES_CENTS) return 22
+  if (c > SWEET_SALES_MAX_CENTS) return 27
+  if (c >= SWEET_SALES_MIN_CENTS) return MONEY_MAX
+  if (c >= TOO_SMALL_SALES_CENTS) return 25
   return 0
 }
 function salesNote(c: number): string {
@@ -222,20 +227,20 @@ function salesNote(c: number): string {
 }
 function fundingPoints(c: number, recent: boolean): number {
   let p = 0
-  if (c >= 500_000_000 * 100) p = 24 // half a billion raised: a big company
-  else if (c >= 100_000_000 * 100) p = 36
-  else if (c >= 25_000_000 * 100) p = 32
-  else if (c >= BIG_FUNDING_CENTS) p = 26
-  else if (c >= 1_000_000 * 100) p = 10
+  if (c >= 500_000_000 * 100) p = 27 // half a billion raised: a big company
+  else if (c >= 100_000_000 * 100) p = 41
+  else if (c >= 25_000_000 * 100) p = 36
+  else if (c >= BIG_FUNDING_CENTS) p = 29
+  else if (c >= 1_000_000 * 100) p = 11
   else p = 2
-  if (recent && c >= BIG_FUNDING_CENTS) p += 4
-  return Math.min(40, p)
+  if (recent && c >= BIG_FUNDING_CENTS) p += 5
+  return Math.min(MONEY_MAX, p)
 }
 // No money known: LinkedIn size stands in.
 // Mid-size (20–499 people) is the target; 500+ has the money but is slower.
 // A headcount is a guess at money, so it stays under real money ($25M+
-// raised = 32, sales in the sweet spot = 40).
-const SIZE_POINTS: Record<BrandSize, number> = { big: 18, target: 26, unknown: 15, small: 6 }
+// raised = 36, sales in the sweet spot = 45).
+const SIZE_POINTS: Record<BrandSize, number> = { big: 20, target: 29, unknown: 17, small: 7 }
 
 export function scoreBrand(b: FitInput): FitResult {
   const reasons: FitReason[] = []
@@ -283,11 +288,12 @@ export function scoreBrand(b: FitInput): FitResult {
   }
 
   // 2. Already sponsors college / music.
-  // (Oct 7 2026: 20 → 15, and 4./5. trimmed, to make room for category
-  // priority at 30 and keep the total at 100.)
-  if (b.sponsorsCollege === true) add(true, 'already sponsors college / music', 15)
+  // (Oct 7 2026: 20 → 15 to make room for category priority at 30; Nov 19
+  // 2026: 15 → 25 — already paying for college or music is the best sign a
+  // brand will buy. Not checked yet = a third, as before.)
+  if (b.sponsorsCollege === true) add(true, 'already sponsors college / music', 25)
   else if (b.sponsorsCollege === false) add(false, 'no college / music sponsorships found', 0)
-  else add(null, 'college / music sponsorships not checked', 5)
+  else add(null, 'college / music sponsorships not checked', 8)
 
   // 3. Category priority (Leo's ranking; replaced "sells to 18–24").
   const pr = b.priority ?? priorityOf(b.category)
@@ -302,17 +308,8 @@ export function scoreBrand(b: FitInput): FitResult {
   const said = !!(String(b.about ?? '').trim() || String(b.topProducts ?? '').trim() || discoverWriteUp(b.notes))
   reasons.push(studentReason(studentUse(brandWriteUp(b), b.name), said))
 
-  // 4. People we can reach.
-  if (b.reachable >= b.need && b.reachable > 0) add(true, b.reachable + ' people we can reach', 10)
-  else if (b.reachable > 0) add(null, 'only ' + b.reachable + ' of ' + b.need + ' people we can reach', 5)
-  else add(false, 'no one we can reach yet', 0)
-
-  // 5. The category converts.
-  if (b.acceptRate == null) add(null, 'category accept rate not known yet', 2)
-  else {
-    const p = Math.max(0, Math.min(5, Math.round(b.acceptRate * 12.5)))
-    add(p >= 3, 'category accepts ' + Math.round(b.acceptRate * 100) + '% of invites', p)
-  }
+  // People we can reach and the category's accept rate no longer count
+  // (Nov 19 2026, the header): readiness and answering, not buying.
 
   const score = capAt100(reasons)
 

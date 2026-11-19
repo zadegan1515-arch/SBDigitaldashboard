@@ -6,9 +6,10 @@
 // morning (free — no API credits) and POSTs what it found here. Rows land
 // on Brands → Discover under "Claude hunt · <date>" for Leo to Add or
 // Dismiss — this door can only add DiscoveredBrand rows, never brands,
-// contacts or anything else. Rules in src/lib/claude-hunt.ts: priority
-// lanes only, a website or source link (no LinkedIn page needed), at
-// least one of Leo's signs, never a brand already known, 50 a day.
+// contacts or anything else. Rules in src/lib/claude-hunt.ts: Leo's Top
+// categories only (his Category priority, read here on every call), a
+// website or source link (no LinkedIn page needed), at least one of Leo's
+// signs, never a brand already known, 50 a day.
 //
 // Auth: Bearer REPORT_TOKEN (the Claude cloud environment's token, 24+
 // characters). The old body `token` = INGEST_TOKEN still works so an
@@ -23,7 +24,8 @@ import '@/lib/bigint-json'
 import { NextRequest, NextResponse } from 'next/server'
 import { PrismaClient } from '@prisma/client'
 import { timingSafeEqual } from 'crypto'
-import { HUNT_LANES, HUNT_SOURCES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
+import { HUNT_LANES, HUNT_SOURCES, HUNT_PER_DAY, HUNT_PER_POST, HUNT_SIGNALS, HUNT_LABEL, huntLabel, huntLanes, judgeHuntRow, knownKeys, type HuntRow } from '@/lib/claude-hunt'
+import { readJsonSetting } from '@/lib/li-review'
 import { GIANT_NAMES } from '@/lib/giants'
 import { dashTokenOk, DASH_HEADER } from '@/lib/api-key-shape'
 
@@ -64,6 +66,18 @@ async function usedToday(): Promise<number> {
   })
 }
 
+// The categories the hunt searches and may file under: the ones Leo has on
+// Top in Category priority right now (Nov 18 2026 — it was a fixed list that
+// still had clothing and athletic). A read that fails falls back to the
+// defaults rather than closing the door.
+async function lanesNow(): Promise<string[]> {
+  try {
+    return huntLanes(await readJsonSetting<Record<string, string>>(prisma, 'categoryPriority', {}))
+  } catch {
+    return HUNT_LANES
+  }
+}
+
 async function known() {
   const [brands, found] = await Promise.all([
     prisma.brand.findMany({ select: { name: true, aka: true } }),
@@ -74,7 +88,7 @@ async function known() {
 
 export async function GET(req: NextRequest) {
   if (!allowed(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
-  const [used, k] = await Promise.all([usedToday(), known()])
+  const [used, k, lanes] = await Promise.all([usedToday(), known(), lanesNow()])
   const names = new Set<string>()
   for (const b of k.brands) {
     names.add(b.name)
@@ -83,7 +97,7 @@ export async function GET(req: NextRequest) {
   for (const d of k.found) names.add(d.name)
   return NextResponse.json({
     ok: true,
-    lanes: HUNT_LANES,
+    lanes,
     sources: HUNT_SOURCES,
     signals: HUNT_SIGNALS,
     perDay: HUNT_PER_DAY,
@@ -113,13 +127,13 @@ export async function POST(req: NextRequest) {
 
   const query = huntLabel()
   let left = Math.max(0, HUNT_PER_DAY - await usedToday())
-  const k = await known()
+  const [k, lanes] = await Promise.all([known(), lanesNow()])
   const keys = knownKeys(k.brands, k.found)
 
   const saved: string[] = []
   const skipped: { name: string; why: string }[] = []
   for (const r of rows) {
-    const verdict = judgeHuntRow(r, keys)
+    const verdict = judgeHuntRow(r, keys, lanes)
     if (!verdict.ok) { const no = verdict as { name: string; why: string }; skipped.push({ name: no.name, why: no.why }); continue }
     const v = verdict as { ok: true; row: HuntRow }
     if (left <= 0) { skipped.push({ name: v.row.name, why: 'daily limit of ' + HUNT_PER_DAY + ' reached' }); continue }

@@ -39,6 +39,7 @@ const NEEDS_YES: Record<string, string[]> = {
   saveFoundEmails: ['confirm'], undoFoundEmails: ['confirm'],
   saveBrandWebsites: ['confirm'], undoBrandWebsites: ['confirm'],
   sendToInstantly: ['confirm'], undoSendToInstantly: ['confirm'],
+  removePeople: ['confirm'], undoRemovePeople: ['confirm'],
 }
 // Calls that preview unless told preview: false.
 const PREVIEW_BY_DEFAULT = new Set(['researchImport', 'researchUndo', 'deadWeight', 'deadWeightUndo'])
@@ -78,6 +79,8 @@ export function actionText(fn: string, args: any, result: any): string | null {
     case 'undoCombineParent': return `Took back the ${s(a.parent || r.parent || '')} combine`.replace(/ {2,}/g, ' ')
     case 'mergePeople': return `Merged people on file twice${brand ? ' at ' + brand : ''}`
     case 'undoMergePeople': return 'Took back a merge of people on file twice'
+    case 'removePeople': return `Removed ${plural(Number(r.removed) || 0, 'person', 'people')} from ${brand || 'a brand'}${count(r.people) ? ' (' + s((r.people as string[]).join(', '), 90) + ')' : ''}`
+    case 'undoRemovePeople': return `Put ${plural(Number(r.back) || 0, 'person', 'people')} back on ${brand || 'a brand'}`
     case 'chatAddBrand': return `Added ${s(r.brand?.name || a.brand?.name || 'a brand')} from the Add a brand chat${r.factsWritten ? ' (with its facts)' : ''}`
     case 'researchStage': return `Staged Brand Fit research for ${plural(count(a.rows), 'brand')} — waiting for your review`
     case 'researchImport': return `Saved reviewed Brand Fit facts for ${plural(Number(r.updated ?? r.applied ?? r.saved ?? count(a.brands)) || 0, 'brand')}`

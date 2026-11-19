@@ -117,7 +117,7 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
 
     // 2. Brand page: reasons + facts edit through the research rules.
     let page = await data('getBrand', { brandId: 'b_mid' });
-    assert.ok(page.fit.reasons.length >= 5 && page.fit.reasons.every(r => typeof r.text === 'string'));
+    assert.ok(page.fit.reasons.length >= 4 && page.fit.reasons.every(r => typeof r.text === 'string'));
     await data('updateBrand', { brandId: 'b_mid', facts: { sales: '12,345,678.50', funding: '$30M', lastRound: '2024-03', us: 'yes', sponsorsCollege: 'no', sponsorNote: '', status: '', acquiredBy: '', note: 'Crunchbase' } });
     let mid = await prisma.brand.findUnique({ where: { id: 'b_mid' } });
     assert.equal(mid.salesCents, 1234567850n);

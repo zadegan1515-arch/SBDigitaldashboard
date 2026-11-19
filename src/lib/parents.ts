@@ -83,11 +83,17 @@ export const PARENTS: Parent[] = [
   { name: 'Altria', search: 'Altria', aka: ['Altria Group'], brands: ['NJOY'],
     others: ['Marlboro', 'Copenhagen', 'Skoal', 'Black & Mild'] },
   { name: 'Reynolds American', search: 'Reynolds American', aka: ['Reynolds American Inc.', 'R.J. Reynolds Tobacco Company', 'RJ Reynolds'],
-    brands: ['Vuse', 'Grizzly'], others: ['Camel', 'Newport', 'Velo', 'Kodiak', 'Pall Mall'] },
+    // Velo is one of its brands to read since Nov 18 2026 (the nicotine pouch push): the people on
+    // file were BAT's global team in London; the US brand team sits at Reynolds.
+    brands: ['Vuse', 'Grizzly', 'Velo|VELO Plus'], others: ['Camel', 'Newport', 'Kodiak', 'Pall Mall'] },
   { name: 'The Kraft Heinz Company', search: 'The Kraft Heinz Company', aka: ['Kraft Heinz'], brands: ['MiO'],
     others: ['Kool-Aid', 'Crystal Light', 'Capri Sun', 'Heinz', 'Oscar Mayer', 'Lunchables', 'Jell-O'] },
   { name: 'Imperial Brands', search: 'Imperial Brands', aka: ['ITG Brands'], brands: ['Zone|ZONE X|Zonex'],
     others: ['Winston'] },
+  // Nov 18 2026: Rogue the nicotine pouch is Swisher's. The roster's "Rogue" had Rogue Fitness's
+  // people on it (another company) — its own name is no way to find its page.
+  { name: 'Swisher', search: 'Swisher', aka: ['Swisher International', 'Swisher Sweets'], brands: ['Rogue|Rogue Nicotine'],
+    others: ['Kayak', 'Optimo', 'BLK'] },
 ]
 
 // The same loose key Stock take uses (kept here so this file stays pure).

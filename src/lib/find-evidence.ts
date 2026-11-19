@@ -214,15 +214,20 @@ export function scoreFind(f: {
   text?: string | null
   giant?: string | null
   hasParent?: boolean
-  // What the brand is: its name and the find's write-up, never our pitch
-  // idea. Read for the student fit and launches; `text` (write-up +
-  // pitch) for the rest, as before.
+  // What the brand is: its name and the find's write-up — never our pitch
+  // idea, for any point. Until Nov 18 2026 `text` (write-up + pitch) was
+  // read for everything but the student fit and launches, and our own idea
+  // ("sampling at a campus concert", "a QR code for a Walmart coupon")
+  // counted as proof: +20 "already pays for college / music" on a brand that
+  // pays for neither. 117 of the 365 finds waiting scored higher for it and
+  // 20 were an A or B only because of it. With a write-up, `text` is not
+  // read; without one (older callers) `text` is the write-up.
   name?: string | null
   writeUp?: string | null
   now?: Date // for "a launch years ago isn't growth" (launchIn)
 }): FindScore {
-  const t = String(f.text ?? '')
   const writeUp = String(f.writeUp ?? '').trim()
+  const t = writeUp || String(f.text ?? '')
   const ev = readFind(t)
   const sign = (s: string) => String(f.signals ?? '').split(',').map(x => x.trim()).includes(s)
   const reasons: FindScore['reasons'] = []

@@ -13235,7 +13235,7 @@ function fitRender() {
   if (!box.querySelector('[data-fitsec]')) {
     box.innerHTML = '<div class="panel panel-pad fit-panel" style="margin-bottom:14px">' +
       '<h3>Brand Fit — which brands to reach out to</h3>' +
-      '<div class="hint" style="margin:0 0 8px">Score 0–100: money first, then college / music sponsorships, 18–24 audience and reachable people.</div>' +
+      '<div class="hint" style="margin:0 0 8px">Score 0–100, how likely a brand is to buy: money first, then category priority, college / music sponsorships and what it sells.</div>' +
       ['research', 'archive'].map(function (k) {
         return '<details class="fold" data-fitsec="' + k + '"' + (FIT.open[k] ? ' open' : '') + '>' +
           '<summary data-fitsum="' + k + '"></summary><div data-fitbody="' + k + '"></div></details>';
