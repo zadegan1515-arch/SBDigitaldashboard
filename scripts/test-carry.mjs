@@ -135,10 +135,28 @@ is('a broken snapshot is ignored', [...findUnsent({ days: ['2026-09-25'], stampe
   is('a half-sent brand pinned later moves anyway, first', [h.moved.map(m => m.id), h.left, h.dayIds, h.unstamp], [['h'], [], ['h', 'kept'], ['h1', 'h2']])
 }
 {
-  const unsent = new Map([['a', { from: '2026-09-25', stamped: [] }], ['b', { from: '2026-09-25', stamped: [] }]])
+  // (Only shown or picked by the fill: tier 3 — the day's limit is theirs.)
+  const unsent = new Map([['a', { from: '2026-09-25', stamped: [], tier: 3 }], ['b', { from: '2026-09-25', stamped: [], tier: 3 }]])
   const facts = new Map([['a', { name: 'A', refusal: null, passedOn: null, pinnedOn: null, people: 3 }], ['b', { name: 'B', refusal: null, passedOn: null, pinnedOn: null, people: 3 }]])
   const r = planCarry(unsent, facts, '2026-09-29', ['x'], 2)
   is('a full day takes what fits', [r.moved.map(m => m.id), r.left.map(x => [x.id, x.why])], [['a'], [['b', 'That day is full']]])
+  // Nov 18 2026: a Thursday already holding the most brands a day takes, and
+  // six brands unsent the day before — two of them half-sent. A half-sent
+  // brand's rest and a brand planned or queued by hand always carry; only
+  // what was merely shown is left behind.
+  const full = ['o1', 'o2']
+  const late = new Map([
+    ['half', { from: '2026-11-18', stamped: ['t1'], tier: 0, at: 0 }],
+    ['planned', { from: '2026-11-18', stamped: ['t2', 't3'], tier: 1, at: 1 }],
+    ['queued', { from: '2026-11-18', stamped: ['t4'] }],   // no tier on an older entry = a commitment
+    ['shown', { from: '2026-11-18', stamped: [], tier: 3, at: 3 }],
+  ])
+  const lateFacts = new Map([...late.keys()].map(id => [id, { name: id, refusal: null, passedOn: null, pinnedOn: null, people: 2 }]))
+  const rf = planCarry(late, lateFacts, '2026-11-19', full, 2)
+  is('a full day still takes a half-sent brand\'s rest and the brands planned or queued by hand', rf.moved.map(m => m.id), ['half', 'planned', 'queued'])
+  is('a full day leaves only what was shown', rf.left.map(x => [x.id, x.why]), [['shown', 'That day is full']])
+  is('they go first on it, the day\'s own pins after', rf.dayIds, ['half', 'planned', 'queued', 'o1', 'o2'])
+  is('their people leave the day they missed', rf.unstamp, ['t1', 't2', 't3', 't4'])
   const passedEarlier = planCarry(new Map([['a', { from: '2026-09-25', stamped: [] }]]),
     new Map([['a', { name: 'A', refusal: null, passedOn: '2026-09-22', pinnedOn: null, people: 2 }]]), '2026-09-29', [], 40)
   is('a Pass on another day does not hold it back', passedEarlier.moved.map(m => m.id), ['a'])

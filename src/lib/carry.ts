@@ -210,10 +210,10 @@ export type CarryFacts = {
 }
 
 // Which brands move to `to` and which stay, each staying one with why.
-// dayIds = the brands already on `to`; the day holds `max` at most — the
-// carried brands are judged in their order (tier, then the day they
-// missed, then their place on it), so on a full day the ones only shown
-// there are the ones left behind. The new day's order is carryOrder's.
+// dayIds = the brands already on `to`; `max` = how many brands a day holds
+// before it takes no more of the ones only shown or picked by the fill —
+// half-sent brands and the ones planned or queued by hand always carry
+// (below). The new day's order is carryOrder's.
 // unstamp = queue stamps to take off: the moved brands' and those of a
 // brand planned for another day (it goes out on that day instead).
 export type Moved = { id: string; name: string; people: number; from: string; tier: CarryTier }
@@ -262,7 +262,15 @@ export function planCarry(
     const people = u.stamped.length || f.people
     if (!people) { left.push({ id, name: f.name, why: 'Nobody left to invite' }); continue }
     if (!day.includes(id)) {
-      if (day.length >= max) { left.push({ id, name: f.name, why: 'That day is full' }); continue }
+      // The day's limit holds back only what was shown or picked by the fill
+      // (tier 3). A half-sent brand's rest has this one day to go, and a
+      // brand Leo planned or queued by hand is his commitment: on a day
+      // already holding `max` they used to be left behind for good — stamped
+      // for a day gone by, pinned nowhere, a half-sent one resting with its
+      // rest never sent (Nov 18 2026: a Thursday he filled to exactly 40
+      // brands, with six brands unsent the day before). They carry and wait
+      // their turn on the day like any pin past its room.
+      if (day.length >= max && tierOf(u) === 3) { left.push({ id, name: f.name, why: 'That day is full' }); continue }
       day.push(id)
     }
     unstamp.push(...u.stamped)

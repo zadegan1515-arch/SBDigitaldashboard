@@ -2318,6 +2318,12 @@ it (other Claude environments, Leo's Mac `.env.local`) needs the new value.
   0 / 1 / 3 from `findUnsent`, `auto` = outreachAutoQueued; unsentOn reads stamps in queue order); Leo can still
   reorder (⋯ → ⤒ Move to top). moveCarried uses the same order; Move what's left's question names the day's own
   brands that would then wait (`nowWait`, `movedWait`).
+  **A full day never turns away a commitment** (Nov 18 2026: Leo put 23 brands on a Thursday that then held exactly
+  `PLAN_DAY_MAX` = 40, with six brands unsent the day before, two of them half-sent): `planCarry`'s "That day is full"
+  now holds back only what was shown or picked by the fill (tier 3). A half-sent brand's rest (tier 0) and a brand
+  planned or queued by hand (tier 1) always carry, past 40 if need be, and wait their turn on the day like any pin past
+  its room — before, they were left stamped for a day gone by, pinned nowhere, the half-sent ones resting with their
+  rest never sent. Hand adds (planAddBrands, Move to, reachAgain) still stop at 40 (`dayfull`).
   **Two missed days and a brand comes off** (Leo, Nov 18 2026: "sometimes once it is set on a day i dont even end up
   sending out bc i dont want to outreach to that brand then"; his pick: **Drop after 2 misses**). Carried brands go
   first, so one he kept skipping sat on top of every day. A **miss** (`missedOn`, carry.ts) = the brand was in a day's
