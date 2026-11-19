@@ -1573,6 +1573,20 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   `{ label, value }`), and apply (with the preview's `expect`; other facts are refused) writes them onto the
   brand it makes in the same transaction (+ `researchedAt`; `factsWritten`). Never onto a brand that was already there — those still go to `researchStage`. It can't
   sign in to SponsorUnited or LinkedIn — the LinkedIn fill and SU sweep pick the brand up from there.
+- **"Find brands" chat** (Leo, Nov 18 2026: "we've reached out to a lot of big brands but now I want to go more in depth on
+  different categories … make a chat that can search up whatever I give it and then it'll add brands into the command
+  center. On the next LinkedIn run it will fill them and then it'll score them"; his picks: **show the list, he says which
+  to add**; people — **add them, show him after**; outreach — **Zach's LinkedIn invites**; big-tobacco brands **included**).
+  A saved Claude cloud session ("Find brands", repo attached, the dashboard token as the environment's network secret — no
+  API spend) follows `docs/find-brands-chat.md`: a topic ("the 20 biggest nicotine pouch companies in the US") → open-web
+  search for real numbers → every name through `brandLookup` → a numbered list (owner, size, on the dashboard or new,
+  where the numbers stop, which are giants) → **waits for "all" or the numbers** → each picked new brand through the Add a
+  brand chat's own path (`chatAddBrand` preview → apply; source `chat`, so +5 Brand Fit, Recently added, and the LinkedIn
+  fill's `mine` reads it next whatever its score). No new handler: the rules are the Add a brand chat's, the pick is Leo's
+  yes. A product line of a brand already there (Geek Bar's G-Pulse) is never a second brand. Only on his word: **people**
+  (`importContacts({ rows, source: 'research' })` — LinkedIn links only as a search result showed them, never built; buyer
+  titles go in the LinkedIn queue) and **a day** (`planAddBrands` preview → his yes; a giant only with `allowGiants`).
+  First topic, Nov 18: nicotine pouches — 13 of the 20 were already on the roster.
 - **One brand per parent company** (Leo, Oct 8 2026: "make all of the brands under Diageo one big brand on the site and
   move all of the contacts there"): `combineParent({ parent })` previews (writes nothing) every brand `parentOf` puts under
   that parent in `src/lib/parents.ts` → one brand named for the company (the one on the roster, else a new one: the
