@@ -112,6 +112,11 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     await brand('bSkipNeed', 'Skip Need Bets', { category: 'betting' }); await people('bSkipNeed', 1, { title: 'Analyst' });
     await brand('bSmallNeed', 'Small Need Hydration', { liMembers: 8, salesCents: null }); await people('bSmallNeed', 1, { title: 'Analyst' });
     await brand('bNotUsNeed', 'Faraway Need Drinks', { usStatus: 'no' });
+    // Brands → LinkedIn run (fillNeeds, Nov 18 2026): one whose last read went wrong, one that went wrong three
+    // runs in a row, one never read with no LinkedIn page saved.
+    await brand('bRetry', 'Retry Hydration'); await people('bRetry', 5);
+    await brand('bStuck', 'Stuck Hydration'); await people('bStuck', 5);
+    await brand('bNoPage', 'Pageless Hydration', { linkedinUrl: null }); await people('bNoPage', 5);
     // The fill's visit log: bNone and bDead read in full; bDead read again since.
     const at = new Date(Date.now() - 20 * 864e5).toISOString();
     await prisma.setting.create({ data: { key: 'liSweepLog', value: JSON.stringify({
@@ -119,6 +124,8 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
       bFull: { at, seen: 30, added: 5, v: 2, clean: true, issue: null, sn: true },
       bDead: { at, seen: 30, added: 0, v: 2, clean: true, issue: null, sn: true, reread: true },
       bWideShort: { at, seen: 12, added: 1, v: 2, clean: true, issue: null, sn: true, wide: true, shown: 12, checked: true },
+      bRetry: { at, seen: 0, added: 0, v: 2, clean: false, issue: 'snNoLoad', tries: 1, run: 'r0' },
+      bStuck: { at, seen: 0, added: 0, v: 2, clean: false, issue: 'noOpen', tries: 3, run: 'r0' },
     }) } });
 
     // ---- the counts ----
@@ -164,6 +171,45 @@ const ok = (name) => { n++; console.log('  ok — ' + name); };
     assert.deepEqual([item('bFull').reread, item('bFull').wide, item('bFull').kind], [true, true, 'reread']);
     assert.ok(li.json.shortFirst >= 2 && li.json.reread >= 2);
     ok('the fill: short brands first, every read wider, each brand read in full before back once');
+
+    // ---- Brands → LinkedIn run: every brand under one reason, the rest under what keeps them off ----
+    let fn = await data('fillNeeds', { minFit: 0 });
+    const reasonOf = (r) => Object.fromEntries(r.reasons.flatMap(g => g.brands.filter(b => b.id).map(b => [b.id, g.key])));
+    const offOf = (r) => Object.fromEntries(r.off.flatMap(g => g.brands.map(b => [b.id, g.key])));
+    let on = reasonOf(fn), offs = offOf(fn);
+    assert.deepEqual([on.bReady, on.bShort, on.bNoPage], ['new', 'new', 'new'], 'never read: new');
+    assert.deepEqual([on.bNone, on.bWideShort], ['people', 'people'], 'read in full, still short on people: not enough people');
+    assert.equal(on.bFull, 'wide', 'read in full before founders & events, has its people');
+    assert.equal(on.bRetry, 'wrong');
+    assert.equal(on.bAgain, 'reached', 'reached before: read last');
+    assert.deepEqual([offs.bGiant, offs.bDead, offs.bStuck], ['veryBig', 'done', 'stuck']);
+    const rowOf = (r, id) => r.reasons.flatMap(g => g.brands).find(b => b.id === id);
+    assert.match(rowOf(fn, 'bRetry').issue, /Sales Navigator.s results didn.t load/);
+    assert.deepEqual([rowOf(fn, 'bNoPage').page, rowOf(fn, 'bReady').page], ['search', 'saved']);
+    assert.ok(fn.off.find(g => g.key === 'stuck').brands[0].back, 'a stuck brand says when it is back');
+    const onIds = fn.reasons.flatMap(g => g.brands).filter(b => b.id).map(b => b.id), offIds = fn.off.flatMap(g => g.brands).map(b => b.id);
+    const inPlay = await prisma.brand.count({ where: { passedAt: null, doNotEmail: false } });
+    assert.equal(new Set([...onIds, ...offIds]).size, onIds.length + offIds.length, 'no brand under two lines');
+    assert.deepEqual([onIds.length + offIds.length, fn.inPlay], [inPlay, inPlay], 'every brand in play is on the run or under one off line');
+    assert.equal(fn.total, fn.reasons.reduce((a, g) => a + g.n, 0), 'the reasons add up to the number');
+    assert.deepEqual(sched.days.flatMap(d => d.rows).map(r => r.brandId), onIds.filter(id => sched.days.some(d => d.rows.some(r => r.brandId === id))).sort((a, b) => order.indexOf(a) - order.indexOf(b)), 'the same brands as the Fill schedule');
+    assert.equal(fn.run, null, 'no run yet');
+    // Under a floor: a brand with its people is held off; one that needs people is still read.
+    fn = await data('fillNeeds', { minFit: 57 });
+    on = reasonOf(fn); offs = offOf(fn);
+    assert.deepEqual([offs.bLowOk, offs.bSkip], ['belowFit', 'belowFit']);
+    assert.equal(on.bLowShort, 'new');
+    assert.equal(rowOf(fn, 'bLowShort').belowFloor, true);
+    assert.equal(fn.minFit, 57);
+    // On "Which LinkedIn page is theirs?": it waits on Leo's pick, whatever its read says.
+    await prisma.setting.create({ data: { key: 'liPageReview', value: JSON.stringify({
+      bDead: { at, why: 'unclear', saved: null, pageIndustry: null, candidates: [] },
+      bStuck: { at, why: 'wrong', saved: 'bstuck', pageIndustry: 'Banking', candidates: [] },
+    }) } });
+    offs = offOf(await data('fillNeeds', { minFit: 0 }));
+    assert.deepEqual([offs.bDead, offs.bStuck, offs.bGiant], ['pick', 'pick', 'veryBig']);
+    await prisma.setting.delete({ where: { key: 'liPageReview' } });
+    ok('LinkedIn run: new / not enough people / went wrong / founders & events / reached; off the run by why; every brand once');
 
     // Its one more read lands (script 1.44 sends wide): the brand is re-read for good.
     const sw = await call('/api/ingest', { action: 'liSwept', token: INGEST_TOKEN, reader: 2, brandId: 'bNone', run: 'r1', name: 'Nobody Hydration',

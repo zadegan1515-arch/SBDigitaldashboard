@@ -19,6 +19,10 @@ export type FillItem = {
   // founders & events search ('wide'); belowFloor = under the Brand Fit floor,
   // on the list because it needs people.
   rereadWhy?: 'wide' | 'needs' | null; belowFloor?: boolean
+  // li-list-db.ts: needs people (short, or no buyer on file); what the run does
+  // next with it (supply.ts fillKindOf); its saved LinkedIn page; "None of
+  // these" with a parent company — only the parent's page is searched.
+  needs?: boolean; kind?: 'new' | 'again' | 'reread'; linkedinUrl?: string | null; noPage?: boolean
 }
 export type FillRow = {
   brandId: string | null; name: string; category: string | null; fit: number | null; contacts: number
@@ -79,6 +83,67 @@ export function byFit<T extends FitOrderItem>(xs: T[]): T[] {
     || Number(!!b.noBuyer) - Number(!!a.noBuyer)
     || (a.contacts ?? 0) - (b.contacts ?? 0)
     || a.name.localeCompare(b.name))
+}
+
+// ---- Brands → LinkedIn run: why each brand is waiting ----
+// Leo, Nov 18 2026: "a list on the brands tab that specifically says how many
+// brands need a linkedin run and for what reason, not enough people, new brand,
+// etc". Every item on the fill's worklist sits under exactly one reason — what
+// the run is for at that brand. Where it goes in the order (the Schedule's
+// brands and Leo's own picks first) is a tag on its row (fillFirst), not a
+// reason. FILL_REASONS is the page's order.
+export type FillReason = 'new' | 'people' | 'wrong' | 'wide' | 'due' | 'reached' | 'giant' | 'research'
+export const FILL_REASONS: Array<{ key: FillReason; label: string; hint: string }> = [
+  { key: 'new', label: 'New — never read', hint: 'The run hasn’t read it on LinkedIn yet.' },
+  { key: 'people', label: 'Not enough people', hint: 'Read before, and still short on people to go out — or nobody in partnerships, marketing or a founder on file.' },
+  { key: 'wrong', label: 'Last read went wrong', hint: 'The run reads it again.' },
+  { key: 'wide', label: 'Founders & events never searched', hint: 'Read in full before that search existed — one more read with it.' },
+  { key: 'due', label: 'Due for another read', hint: 'Its month’s wait is over, or its parent company’s page is still to search.' },
+  { key: 'reached', label: 'Already reached out to', hint: 'Under 25 people on file — the run reads these last.' },
+  { key: 'giant', label: 'Giants, held back', hint: 'Read last of all.' },
+  { key: 'research', label: 'Not on the dashboard yet', hint: 'Names from the research list for the run to find on LinkedIn.' },
+]
+export function fillReason(i: FillItem): FillReason {
+  if (i.research) return 'research'
+  // Read last wins, as in fillWhy: that's where the run puts it.
+  if (i.last === 'reached') return 'reached'
+  if (i.last === 'giant') return 'giant'
+  if (i.retry || i.hiddenRetry) return 'wrong'
+  if (i.kind === 'new') return 'new'
+  if (i.short || i.needs || i.noBuyer || (i.reread && i.rereadWhy === 'needs')) return 'people'
+  if (i.reread) return 'wide'
+  return 'due'
+}
+// Why the run takes it before the rest, when it does ('' = in its Brand Fit place).
+export function fillFirst(i: FillItem, dayLabel: (key: string) => string = k => k): string {
+  if (i.planned) return 'On the Schedule ' + dayLabel(i.planned)
+  if (i.mine) return i.mine === 'list' ? 'On your Week plan list' : 'You added it'
+  if (i.asked) return 'Asked for by name'
+  return ''
+}
+
+// Every other brand in play: the one reason it isn't on the run (li-list-db.ts
+// hands in full / resting / stuck / nopage / belowFit / veryBig; route.ts knows
+// which are on "Which LinkedIn page is theirs?"). FILL_OFF is the page's order —
+// what Leo can do something about first.
+export type FillOff = 'pick' | 'stuck' | 'wait' | 'belowFit' | 'veryBig' | 'nopage' | 'full' | 'done' | 'other'
+export const FILL_OFF: Array<{ key: FillOff; label: string; hint: string }> = [
+  { key: 'pick', label: 'Waiting on your page pick', hint: 'The run wasn’t sure which LinkedIn page is theirs. It can’t read them until you pick.' },
+  { key: 'stuck', label: 'Went wrong three runs in a row', hint: 'Back on the run a month after the last try.' },
+  { key: 'wait', label: 'Resting after a read that found nothing clear', hint: 'Back on the run within a month.' },
+  { key: 'belowFit', label: 'Under the Brand Fit floor', hint: 'They have their people; the floor keeps them off — as it does too small brands, Skip categories and ones not sold in the US.' },
+  { key: 'veryBig', label: 'Very big, skipped', hint: 'Household names, the big parents’ brands, or 1,500+ people on LinkedIn.' },
+  { key: 'nopage', label: 'No LinkedIn page', hint: 'You said none of the pages is theirs, and there’s no parent company to look under.' },
+  { key: 'full', label: 'Full — 25 people on file', hint: 'The most we keep for a brand.' },
+  { key: 'done', label: 'Read in full already', hint: 'Nothing went wrong, so the run doesn’t read them again by itself.' },
+  { key: 'other', label: 'Left off', hint: '' },
+]
+export function fillOff(x: { why: string; back?: string | null; inReview?: boolean }): FillOff {
+  // His pick is the way back, whatever the read's own wait says.
+  if (x.inReview && (x.why === 'resting' || x.why === 'stuck')) return 'pick'
+  if (x.why === 'stuck') return 'stuck'
+  if (x.why === 'resting') return x.back ? 'wait' : 'done'
+  return x.why === 'full' || x.why === 'nopage' || x.why === 'belowFit' || x.why === 'veryBig' ? x.why : 'other'
 }
 
 function addDays(key: string, n: number): string {

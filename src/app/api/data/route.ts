@@ -50,7 +50,7 @@ import { guessCategory, CATEGORY_KEYS, isCategoryKey } from '@/lib/category-hint
 import { readLiLog, readLiResearch, issueWords, updateLiLog, markOutcome, LI_SCRIPT_VERSION } from '@/lib/li-sweep'
 import { holdsOf, supplyOf, onlyHeldBy, rereadOpen, needsReadOpen, deadWeightOf, DEAD_WORDS, FILL_FIT_DEFAULT, HOLDS, type Hold, type SupplyState, type DeadWhy } from '@/lib/supply'
 import { buildLiList, LI_FILL_FLOOR_KEY } from '@/lib/li-list-db'
-import { splitFillDays } from '@/lib/fill-schedule'
+import { splitFillDays, fillReason, fillFirst, fillOff, FILL_REASONS, FILL_OFF, type FillReason, type FillOff } from '@/lib/fill-schedule'
 import { readHiddenLog, updateHiddenLog, markZachRead, clearZachRead, zachDue, ZACH_REST_DAYS, type HiddenEntry } from '@/lib/li-hidden'
 import { readRuns } from '@/lib/li-report'
 import { companySlug, companyPageUrl, profileSlug, looksLikeSeller } from '@/lib/li-capture'
@@ -84,7 +84,7 @@ import { BIG_BRAND_WORK, brandSize } from '@/lib/brand-size'
 import { outcomeRates, ACCEPT_AFTER_DAYS as OUTCOME_ACCEPT_DAYS, type OutcomeInvite } from '@/lib/outcomes'
 import {
   readJsonSetting, writeJsonSetting, LI_REVIEW_KEY, LI_CONFIRMED_KEY, LI_OWNER_KEY,
-  updateReviewState, openReview,
+  updateReviewState, openReview, answered,
   type Review, type Confirmed, type LiOwner,
 } from '@/lib/li-review'
 import { LINKEDIN_WEEK_LIMIT, LINKEDIN_WEEK_NEAR, linkedinWindows, acceptRates, planWeekDays, weekCap, orderFillGroups, fillWholeBrands, bigFits, compareAuto, type AcceptRates } from '@/lib/plan-week'
@@ -7772,6 +7772,68 @@ const handlers: Record<string, Handler> = {
       },
       days: scheduleDays(ctx.plan, ctx.q.extras).slice(0, 4).map(d => ({ date: d.key, label: dayLabel(d.key), today: d.key === today })),
       dead: { count: dead.brands.length, last: dead.last },
+    }
+  },
+
+  // Brands → LinkedIn run (Leo, Nov 18 2026: "a list on the brands tab that
+  // specifically says how many brands need a linkedin run and for what reason,
+  // not enough people, new brand, etc"). The fill's own worklist (buildLiList —
+  // what the run reads, at the floor its app last asked with, research list
+  // on like the run) with every brand under one reason (fill-schedule.ts
+  // fillReason), in the run's order; and every other brand in play under the
+  // one thing keeping it off (fillOff), so the numbers add up to the brands in
+  // play. `run` = the last run's word: a run takes its list when it starts, so
+  // one going now won't read what joined since. Read-only.
+  async fillNeeds({ minFit }: any = {}) {
+    const app = await readJsonSetting<{ minFit?: number; at?: string } | null>(prisma, LI_FILL_FLOOR_KEY, null)
+    const appFloor = app && Number.isFinite(Number(app.minFit)) ? { minFit: Number(app.minFit), at: app.at ?? null } : null
+    const want = minFit === undefined || minFit === null || minFit === '' ? (appFloor?.minFit ?? FILL_FIT_DEFAULT) : minFit
+    const floor = Math.max(0, Math.min(100, Math.round(Number(want)) || 0))
+    const [list, review, confirmed, runs] = await Promise.all([
+      buildLiList(prisma, { action: 'liList', minFit: floor, focus: 'electrolyte', research: true, salesNav: true, skipGiants: true, off: true }),
+      readJsonSetting<Review>(prisma, LI_REVIEW_KEY, {}),
+      readJsonSetting<Confirmed>(prisma, LI_CONFIRMED_KEY, {}),
+      readRuns(prisma),
+    ])
+    const label = (key: string) => NY_DAY_LABEL.format(new Date(key + 'T12:00:00Z'))
+    const waitsOnPick = (id: string | null | undefined, page: string | null | undefined) =>
+      !!id && !!review[id] && !answered(review[id], confirmed[id], page ?? null)
+    const on: Record<FillReason, any[]> = { new: [], people: [], wrong: [], wide: [], due: [], reached: [], giant: [], research: [] }
+    for (const i of list.items as any[]) {
+      on[fillReason(i)].push({
+        id: i.brandId ?? null, name: i.name, category: i.category ?? null, fit: i.fit ?? null, contacts: i.contacts ?? 0,
+        // Goes before the rest: the Schedule's day, or one of Leo's own.
+        first: fillFirst(i, label) || null,
+        // No page saved: the run searches LinkedIn for it ('parent' = only under its parent company).
+        page: i.linkedinUrl ? 'saved' : i.noPage ? 'parent' : 'search',
+        issue: i.retry ? (issueWords(i.issue) || 'the last read had an issue') + (i.tries && i.tries > 1 ? ' (try ' + (i.tries + 1) + ')' : '') : null,
+        noBuyer: !!i.noBuyer, short: !!i.short, belowFloor: !!i.belowFloor,
+        // Still on "Which LinkedIn page is theirs?" — the run searches again; a pick settles it.
+        pick: waitsOnPick(i.brandId, i.linkedinUrl),
+      })
+    }
+    const offBy: Record<FillOff, any[]> = { pick: [], stuck: [], wait: [], belowFit: [], veryBig: [], nopage: [], full: [], done: [], other: [] }
+    for (const b of (list.off ?? []) as any[]) {
+      offBy[fillOff({ why: b.why, back: b.back, inReview: waitsOnPick(b.brandId, b.linkedinUrl) })].push({
+        id: b.brandId, name: b.name, category: b.category ?? null, fit: b.fit ?? null, contacts: b.contacts ?? 0, back: b.back ?? null,
+      })
+    }
+    for (const k of Object.keys(offBy) as FillOff[]) offBy[k].sort((x, y) => (y.fit ?? -1) - (x.fit ?? -1) || x.name.localeCompare(y.name))
+    const today = localDayKey()
+    const last = runs[0] ?? null
+    return {
+      today, minFit: floor, appFloor, perDay: LI_PER_DAY,
+      total: list.items.length,
+      // Brands in play = on the run + every off line (research names aren't brands yet).
+      inPlay: list.items.filter((i: any) => i.brandId).length + (list.off ?? []).length,
+      first: { planned: list.planned, mine: list.mine },
+      reasons: FILL_REASONS.map(r => ({ ...r, n: on[r.key].length, brands: on[r.key] })).filter(r => r.n),
+      off: FILL_OFF.map(r => ({ ...r, n: offBy[r.key].length, brands: offBy[r.key] })).filter(r => r.n),
+      run: last ? {
+        status: last.status, startedAt: last.startedAt, lastAt: last.lastAt, items: last.items, read: last.brands.length, added: last.added,
+        // Still at it: its last word is under ten minutes old (the script's own line for a run left behind).
+        live: last.status === 'running' && Date.now() - Date.parse(last.lastAt) < 10 * 60000,
+      } : null,
     }
   },
 

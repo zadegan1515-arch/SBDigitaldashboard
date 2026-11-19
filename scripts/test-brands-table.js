@@ -98,7 +98,7 @@ async function main() {
 
   // Sub-tabs: Stock take and Needs contacts folded in, still reachable.
   const tabs = await page.$$eval('#sub-tabs .nav-item', (bs) => bs.map((b) => b.textContent));
-  assert.deepEqual(tabs, ['All brands', 'Recently added', 'Discover', 'Clarify']);
+  assert.deepEqual(tabs, ['All brands', 'Recently added', 'LinkedIn run', 'Discover', 'Clarify']);
   assert.ok(await page.$('#bq-stock') && await page.$('#bq-needs'), 'lanes and worklist buttons');
   console.log('✓ one Brands page; lanes / worklist are buttons');
 

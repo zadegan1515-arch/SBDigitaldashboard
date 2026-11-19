@@ -389,8 +389,28 @@ export async function buildLiList(prisma: PrismaClient, body: any) {
     // On the list for needing people though under the floor (the run's panel says so).
     .map(i => (i.needs && !i.planned && !i.mine && !fitOk(i.brandId) ? { ...i, belowFloor: true } : i))
   const reachedLast = (i: any) => i.last === 'reached'
+  // Brands → LinkedIn run (route.ts fillNeeds; Leo, Nov 18 2026): every brand
+  // in play that isn't on the list and the one thing keeping it off, in the
+  // order the list above drops them — full, resting (stuck = an issue that
+  // outlasted its retries; `back` = when it's due again, null = read in full),
+  // "None of these" with no parent, the Brand Fit floor, the very-big skip.
+  // Only when asked with `off` — never for the script.
+  const onList = new Set(ordered.map(i => i.brandId).filter(Boolean))
+  const off = body.off !== true ? undefined : everyBrand.filter(b => !onList.has(b.id)).map(b => {
+    const d = dueOf(b)
+    const why = b._count.contacts >= CONTACT_CAP_PER_BRAND ? 'full'
+      : !ignoreRest && restsNow(b) && !hiddenOld(b) ? (d.stuck ? 'stuck' : 'resting')
+      : !b.linkedinUrl && confirmed[b.id] === 'none' && !parentOf(b.name, b.aka) ? 'nopage'
+      : !fitOk(b.id) && !needSet.has(b.id) ? 'belowFit'
+      : skipBig && veryBig(b) ? 'veryBig' : 'other'
+    return {
+      brandId: b.id, name: b.name, category: b.category, contacts: b._count.contacts, linkedinUrl: b.linkedinUrl,
+      fit: fitOf.get(b.id)?.score ?? null, why, back: why === 'resting' || why === 'stuck' ? d.back : null,
+    }
+  })
   return {
     items: ordered,
+    ...(off ? { off } : {}),
     // Brands on the list with nobody in marketing / partnerships yet —
     // they go right after the Schedule's (the panel says so).
     noBuyer: ordered.filter(i => i.noBuyer && !i.research && !i.planned).length,

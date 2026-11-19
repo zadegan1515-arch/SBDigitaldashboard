@@ -1854,6 +1854,53 @@
   .su-dacts{display:flex;gap:8px;margin-top:12px}
   .su-filter{font-size:13.5px;color:var(--ink-2);gap:8px!important}
   .su-filter a{color:var(--accent-hi)}
+  /* Brands → LinkedIn run (Leo, Nov 18 2026): one number, a tile per reason, the brands under each */
+  .lr-top{margin-top:18px;padding:18px 20px;display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+  .lr-num{flex:none;min-width:150px}
+  .lr-big{font-family:var(--display);font-size:54px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .lr-of{font-size:14.5px;color:var(--ink-2);margin-top:6px}
+  .lr-say{flex:1 1 420px;min-width:0;font-size:15px;line-height:1.55;color:var(--ink-2)}
+  .lr-say b{color:var(--ink-1)}
+  .lr-say div+div{margin-top:5px}
+  .lr-live{color:var(--warn)}
+  .lr-dim{font-size:13px;color:var(--ink-3);line-height:1.45}
+  .lr-dim a{color:var(--accent-hi)}
+  .lr-floor.inp{width:58px;height:28px;padding:2px 6px;font-size:13px;min-height:0;display:inline-block;vertical-align:baseline}
+  .lr-re{flex:none;margin-left:auto}
+  .lr-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px}
+  .lr-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:12px 14px 13px;text-align:left;font:inherit;color:inherit;cursor:pointer;
+    background:var(--surface-1);border:1px solid var(--border);border-top:3px solid var(--lr,#3a3a46);border-radius:12px}
+  .lr-tile:hover{border-color:#34343f;border-top-color:var(--lr,#3a3a46)}
+  .lr-tile:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+  .lr-tile.on{background:var(--accent-soft);border-color:var(--accent);border-top-color:var(--lr,var(--accent))}
+  .lr-tile .v{font-family:var(--display);font-size:28px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+  .lr-tile .k{font-size:14.5px;font-weight:650;color:var(--ink-1)}
+  .lr-tile .h{font-size:12.5px;color:var(--ink-3);line-height:1.4}
+  .lr-new{--lr:#4f83f7}.lr-people{--lr:#e8b64c}.lr-wrong{--lr:#f0716b}.lr-wide{--lr:#43c6e8}.lr-due{--lr:#9c9caa}.lr-reached{--lr:#a78bfa}.lr-giant{--lr:#6b6b78}.lr-research{--lr:#3ecf8e}
+  .lr-sec{margin-top:22px}
+  .lr-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding-left:10px;border-left:3px solid var(--lr,#3a3a46)}
+  .lr-h b{font-size:17px}
+  .lr-h .n{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+  .lr-list{margin-top:8px;padding:2px 16px}
+  .lr-row{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border-soft)}
+  .lr-row:first-child{border-top:0}
+  .lr-name{font-size:15px;font-weight:650;flex:0 0 270px;min-width:0}
+  .lr-meta{flex:1 1 320px;min-width:0;font-size:13.5px;color:var(--ink-2);line-height:1.6}
+  .lr-meta .lr-first{margin-right:8px}
+  .lr-first{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12.5px;font-weight:650;white-space:nowrap;
+    border:1px solid rgba(62,207,142,.4);color:#9ae6c4;background:rgba(62,207,142,.08)}
+  .lr-more{margin:8px 0 10px}
+  .lr-off{margin-top:26px;padding:16px 20px}
+  .lr-off-h{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:6px}
+  .lr-off-h b{font-size:16px}
+  .lr-orow{display:flex;gap:6px 12px;align-items:baseline;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--border-soft)}
+  .lr-on{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;min-width:44px;text-align:right}
+  .lr-ow{flex:1 1 300px;min-width:0;font-size:14.5px}
+  .lr-oa{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .lr-oa .btn-ghost,.lr-oa .btn-solid{padding:4px 11px;font-size:13px}
+  .lr-names{flex-basis:100%;font-size:13.5px;color:var(--ink-2);line-height:1.7;padding:2px 0 4px 56px}
+  .lr-names .su-link{color:var(--ink-2)}
+  @media (max-width:700px){.lr-big{font-size:44px}.lr-names{padding-left:0}.lr-re{margin-left:0}.lr-name{flex-basis:100%}}
   .cv-tog:hover{color:var(--ink-2)}
   .cv-card .cv-run{margin-top:8px;padding-top:7px}
   .fp-fold{margin-top:8px}
@@ -3433,6 +3480,14 @@
       <div id="su-proposals"></div>
     </section>
 
+    <!-- LINKEDIN RUN — every brand waiting for the LinkedIn fill, by reason (Leo, Nov 18 2026) -->
+    <section class="view page wide" id="lirun">
+      <div class="eyebrow">Brands</div>
+      <h1>Waiting for a LinkedIn run</h1>
+      <div class="sub">Every brand the next run reads and why — then why the rest aren’t on it.</div>
+      <div id="lr-body"></div>
+    </section>
+
     <!-- DISCOVER -->
     <section class="view page wide" id="discover">
       <div class="eyebrow">Discover</div>
@@ -4000,7 +4055,7 @@ function refreshAfterSponsorChange() {
 // The top nav holds five groups; the views inside a group show as a
 // second row of sub-tabs. GROUP_OF maps every view to its group.
 var SUBTABS = {
-  brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['discover', 'Discover'], ['clarify', 'Clarify']],
+  brands: [['brands', 'All brands'], ['recent', 'Recently added'], ['lirun', 'LinkedIn run'], ['discover', 'Discover'], ['clarify', 'Clarify']],
   outreach: [['outreach', 'LinkedIn'], ['reached', 'Results'], ['weekplan', 'Week plan'], ['schedule', 'Schedule'], ['linkedin', 'People'], ['passed', 'Archived'], ['results', 'Email stats']],
   // Email (Leo, Nov 16 2026: "keep the Outreach tab but then I want a tab that says Email … put the Email and
   // Instantly tabs there … a Template tab under the Email tab"): its own top tab after Outreach.
@@ -4013,7 +4068,7 @@ var SUBTABS = {
   zachtab: [['zachtab', 'Overview'], ['intalks', 'In talks'], ['pipeline', 'Deals board'], ['sponsorships', 'Sponsorships']],
 };
 var GROUP_OF = {
-  brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands',
+  brands: 'brands', recent: 'brands', brand: 'brands', discover: 'brands', clarify: 'brands', needs: 'brands', stock: 'brands', lirun: 'brands',
   'email-out': 'email-out', instantly: 'email-out', templates: 'email-out',
   outreach: 'outreach', reached: 'outreach', schedule: 'outreach', weekplan: 'outreach', linkedin: 'outreach', results: 'outreach', passed: 'outreach',
   board: 'board', talks: 'board', requests: 'board', shows: 'board',
@@ -8690,6 +8745,7 @@ function supRender() {
       (f.shortFirst ? '<div class="su-dim">The ' + f.shortFirst + ' short on people go first, best Brand Fit first.</div>' : '') +
       (f.needsUnderFloor ? '<div class="su-dim">' + f.needsUnderFloor + ' of them ' + (f.needsUnderFloor === 1 ? 'is' : 'are') + ' under Fit ' + d.minFit + ' — brands that need people are read whatever their fit.</div>' : '') +
       (fillNote ? '<div class="su-dim">' + esc(fillNote) + '</div>' : '') +
+      (f.total ? '<div class="su-dim"><a href="#" data-suplirun="1" style="color:var(--accent-hi)">See them by reason →</a></div>' : '') +
       (f.total ? '<a class="btn-solid su-go" href="https://www.linkedin.com/feed/#sb-fill" target="_blank" rel="noopener" title="Opens LinkedIn in a window of its own and starts the fill. Needs the LinkedIn capture script in Tampermonkey.">Start the fill ↗</a>' : '') +
     '</div>' +
   '</div>';
@@ -8796,6 +8852,7 @@ document.getElementById('supply-card').addEventListener('click', function (e) {
   if ((b = e.target.closest('[data-supshow]'))) { supShow(b.getAttribute('data-supshow')); return; }
   if (e.target.closest('[data-supre]')) { supLoad(); return; }
   if (e.target.closest('[data-supappfloor]')) { e.preventDefault(); SUP.floor = null; supLoad(); return; }
+  if (e.target.closest('[data-suplirun]')) { e.preventDefault(); gotoView('lirun'); return; }
   if (e.target.closest('[data-supagain]')) { SUP.againOpen = !SUP.againOpen; supRender(); return; }
   if (e.target.closest('[data-supcp]')) { cpOpen(); return; }
   if ((b = e.target.closest('[data-supsw]'))) {
@@ -8874,6 +8931,178 @@ document.getElementById('supply-card').addEventListener('change', function (e) {
     try { localStorage.setItem('sb.fillFit', String(v)); } catch (err) {}
     supLoad();
   }
+});
+
+// --- Brands → LinkedIn run (Leo, Nov 18 2026) -------------------------
+// "a list on the brands tab that specifically says how many brands need a
+// linkedin run and for what reason, not enough people, new brand, etc". Its
+// own sub-tab (#lirun): one number — the brands the fill's next run reads, at
+// the floor its app last used — a tile per reason (a click shows only that
+// one), the brands under each in the run's order, then every other brand in
+// play under the one thing keeping it off, so the numbers add up. Data =
+// fillNeeds (read-only; the fill's own worklist, src/lib/fill-schedule.ts
+// fillReason / fillOff). Nothing starts from here: the run is started from the
+// LinkedIn Fill app (the dashboard's Start opens his main Chrome).
+// pick: the reason shown alone (every brand of it; else 15 a reason, then Show
+// all); more / off: lists opened in full; floor: a
+// Brand Fit floor typed for this visit (null = the fill app's own).
+var LR = { data: null, err: null, pick: '', more: {}, off: {}, floor: null };
+var LR_ROWS = 15;
+function loadLiRun() {
+  var again = showView('lirun');
+  var box = document.getElementById('lr-body');
+  var mine = viewTurn('lirun');
+  if (!again) { LR.pick = ''; LR.more = {}; LR.off = {}; if (LR.floor != null) { LR.floor = null; LR.data = null; } }
+  if (!LR.data) box.innerHTML = '<div class="hint" style="margin-top:18px">Counting the brands waiting for a run…</div>';
+  return api('fillNeeds', LR.floor == null ? {} : { minFit: LR.floor }).then(function (d) {
+    if (!mine()) return;
+    if (!d || !d.reasons || !d.off) { LR.data = null; LR.err = 'The dashboard didn’t answer with the list — try again in a minute.'; }
+    else { LR.data = d; LR.err = null; }
+    lrRender();
+  }).catch(function (e) {
+    if (!mine()) return;
+    LR.err = e.message;
+    lrRender();
+  });
+}
+// "about 45 minutes": the runs take about 45 s a brand, searches included.
+function lrMinutes(n) {
+  var m = Math.max(5, Math.ceil(n * 0.75 / 5) * 5);
+  return m < 90 ? 'about ' + m + ' minutes' : 'about ' + (Math.round(m / 30) / 2) + ' hours';
+}
+// New York's day, like cdTime's clock (shortDate reads the browser's own zone).
+function lrDay(at) { return new Date(at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' }); }
+function lrRunLine(run) {
+  if (!run) return '';
+  var read = run.read + (run.items ? ' of ' + run.items : '') + (run.read === 1 && !run.items ? ' brand read' : ' brands read');
+  var saved = plural(run.added || 0, 'person', 'people') + ' saved';
+  if (run.live) {
+    return '<div class="lr-live"><b>A run is going now</b> — ' + read + ', ' + saved + ' so far. It took its list when it started, so brands that joined since wait for the next run.</div>';
+  }
+  var when = lrDay(run.lastAt) + ', ' + cdTime(run.lastAt);
+  var how = run.status === 'finished' ? 'finished ' + when
+    : run.status === 'stopped' ? 'stopped ' + when
+    : run.status === 'paused' ? 'paused since ' + when
+    : 'went quiet ' + when + ' — its window was closed or the computer slept';
+  return '<div>Last run: ' + esc(how) + ' — ' + read + ', ' + saved + '.</div>';
+}
+function lrRowHtml(b, d) {
+  var bits = [];
+  if (b.category) bits.push(esc(CAT_NAMES[b.category] || b.category));
+  if (b.fit != null) bits.push('Fit ' + b.fit);
+  if (b.id) {
+    bits.push(b.contacts ? plural(b.contacts, 'person', 'people') + ' on file' + (b.noBuyer ? ', none in partnerships, marketing or a founder' : '') : 'nobody on file');
+  }
+  if (b.issue) bits.push('last time: ' + esc(b.issue));
+  if (b.belowFloor) bits.push('under Fit ' + d.minFit + ' — read because it needs people');
+  if (b.id && b.page === 'search') bits.push('no LinkedIn page saved');
+  if (b.page === 'parent') bits.push('read under its parent company’s page');
+  if (b.pick) bits.push('still on your page-pick list');
+  return '<div class="lr-row"' + (b.id ? ' data-lrrow="' + esc(b.id) + '"' : '') + '>' +
+    '<span class="lr-name">' + (b.id ? '<span class="su-link" data-brand="' + esc(b.id) + '" title="Open the brand page">' + esc(b.name) + '</span> ' + rbTag(b.id) : esc(b.name)) + '</span>' +
+    '<span class="lr-meta">' + (b.first ? '<span class="lr-first" title="The run reads these before the rest">Goes first · ' + esc(b.first) + '</span>' : '') +
+      bits.join(' · ') + '</span></div>';
+}
+function lrOffHtml(r, d) {
+  var open = !!LR.off[r.key];
+  var label = r.key === 'belowFit' ? 'Under Brand Fit ' + d.minFit : r.label;
+  var act = (r.key === 'pick' ? '<button class="btn-solid" data-lrpickpages="1">Pick their pages →</button>' : '') +
+    '<button class="btn-ghost" data-lroff="' + r.key + '" aria-expanded="' + (open ? 'true' : 'false') + '">' + (open ? 'Hide ▴' : 'See them ▾') + '</button>';
+  var names = '';
+  if (open) {
+    var all = !!LR.more['off:' + r.key], list = all ? r.brands : r.brands.slice(0, 80);
+    names = '<div class="lr-names">' + list.map(function (b) {
+      return '<span class="su-link" data-brand="' + esc(b.id) + '">' + esc(b.name) + '</span>' +
+        (b.back && (r.key === 'stuck' || r.key === 'wait') ? ' <span class="lr-dim">(back ' + esc(lrDay(b.back)) + ')</span>' : '');
+    }).join(' · ') +
+    (r.brands.length > list.length ? ' · <a href="#" data-lrmore="off:' + r.key + '">Show all ' + r.brands.length + '</a>' : '') + '</div>';
+  }
+  return '<div class="lr-orow" data-lrorow="' + r.key + '"><b class="lr-on">' + r.n + '</b>' +
+    '<span class="lr-ow"><b>' + esc(label) + '</b>' + (r.hint ? '<div class="lr-dim">' + esc(r.hint) + '</div>' : '') + '</span>' +
+    '<span class="lr-oa">' + act + '</span>' + names + '</div>';
+}
+function lrRender() {
+  var box = document.getElementById('lr-body');
+  if (!box) return;
+  var d = LR.data;
+  if (!d) {
+    box.innerHTML = '<div class="panel panel-pad" style="margin-top:18px">' + esc(LR.err || 'Couldn’t count the run.') +
+      ' <button class="su-show" data-lrre="1">Try again</button></div>';
+    return;
+  }
+  if (LR.pick && !d.reasons.some(function (r) { return r.key === LR.pick; })) LR.pick = '';
+  var n = d.total, per = d.perDay || 100;
+  var fits = n <= per
+    ? 'One run reads up to ' + per + ' brands, so ' + (n === 1 ? 'it goes' : 'all ' + n + ' go') + ' in <b>one run</b> — ' + lrMinutes(n) + '.'
+    : 'A run reads ' + per + ' brands a day, so this is <b>about ' + plural(Math.ceil(n / per), 'day') + '</b> — it carries on each morning by itself while its window stays open.';
+  var first = [];
+  if (d.first && d.first.planned) first.push(d.first.planned + (d.first.planned === 1 ? ' is' : ' are') + ' on the Schedule’s coming days');
+  if (d.first && d.first.mine) first.push(d.first.mine + (d.first.mine === 1 ? ' is one' : ' are ones') + ' you added yourself');
+  var noPage = 0;
+  d.reasons.forEach(function (r) { r.brands.forEach(function (b) { if (b.id && b.page === 'search') noPage++; }); });
+  var floorLine = '<div class="lr-dim">Counted at Brand Fit <input class="inp lr-floor" data-lrfloor type="number" min="0" max="100" value="' + esc(String(d.minFit)) +
+    '" title="The floor your LinkedIn Fill app’s run uses (its setup panel); type another to see what it would read"> and up' +
+    (d.appFloor && d.appFloor.minFit !== d.minFit
+      ? ' — your LinkedIn Fill app’s run uses ' + d.appFloor.minFit + ' · <a href="#" data-lrappfloor="1">Count at ' + d.appFloor.minFit + '</a>'
+      : d.appFloor ? ' — the floor your LinkedIn Fill app’s run uses.' : '.') +
+    ' Brands that need people are read whatever their fit.</div>';
+  var top = '<div class="panel lr-top">' +
+    '<div class="lr-num"><div class="lr-big" id="lr-total">' + n + '</div><div class="lr-of">' + (n === 1 ? 'brand' : 'brands') + ' waiting for a run</div></div>' +
+    '<div class="lr-say">' +
+      (n ? '<div>' + fits + ' Start it from your <b>LinkedIn Fill</b> app.</div>' : '<div>Nothing is waiting for a run at this floor.</div>') +
+      (first.length ? '<div>' + first.join(' and ') + ' — those go first.</div>' : '') +
+      (noPage ? '<div>' + noPage + (noPage === 1 ? ' has' : ' have') + ' no LinkedIn page saved — the run searches for ' + (noPage === 1 ? 'it' : 'each') +
+        ', and any it isn’t sure of land on your page-pick list.</div>' : '') +
+      lrRunLine(d.run) + floorLine +
+    '</div>' +
+    '<button class="su-show lr-re" data-lrre="1" title="Count again">↻ Refresh</button>' +
+  '</div>';
+
+  var tiles = d.reasons.length ? '<div class="lr-tiles">' + d.reasons.map(function (r) {
+    return '<button class="lr-tile lr-' + r.key + (LR.pick === r.key ? ' on' : '') + '" data-lrpick="' + r.key + '" aria-pressed="' + (LR.pick === r.key ? 'true' : 'false') + '">' +
+      '<span class="v">' + r.n + '</span><span class="k">' + esc(r.label) + '</span><span class="h">' + esc(r.hint) + '</span></button>';
+  }).join('') + '</div>' : '';
+
+  var secs = d.reasons.filter(function (r) { return !LR.pick || r.key === LR.pick; }).map(function (r) {
+    var all = !!LR.more[r.key] || LR.pick === r.key, list = all ? r.brands : r.brands.slice(0, LR_ROWS);
+    return '<div class="lr-sec lr-' + r.key + '" data-lrsec="' + r.key + '">' +
+      '<div class="lr-h"><b>' + esc(r.label) + '</b><span class="n">' + r.n + '</span><span class="lr-dim">' + esc(r.hint) + '</span></div>' +
+      '<div class="panel lr-list">' + list.map(function (b) { return lrRowHtml(b, d); }).join('') + '</div>' +
+      (r.brands.length > list.length ? '<button class="btn-ghost lr-more" data-lrmore="' + r.key + '">Show all ' + r.brands.length + '</button>' : '') +
+    '</div>';
+  }).join('');
+  var only = LR.pick ? '<div class="lr-dim" style="margin-top:12px">Showing one reason · <a href="#" data-lrpick="">Show all ' + n + '</a></div>' : '';
+
+  var offN = d.off.reduce(function (a, r) { return a + r.n; }, 0);
+  var off = d.off.length ? '<div class="panel lr-off">' +
+    '<div class="lr-off-h"><b>Not on the run</b><span class="lr-dim">' + plural(offN, 'brand') + ' — each under the one thing keeping it off.</span></div>' +
+    d.off.map(function (r) { return lrOffHtml(r, d); }).join('') +
+    '<div class="lr-dim" style="margin-top:10px">' + d.inPlay + ' brands in play in all: ' + (d.inPlay - offN) + ' on the run, ' + offN +
+      ' not. Archived and do-not-email brands are never read.</div>' +
+  '</div>' : '';
+
+  box.innerHTML = top + tiles + only + secs + off;
+}
+document.getElementById('lr-body').addEventListener('click', function (e) {
+  var b;
+  if (e.target.closest('[data-lrre]')) { loadLiRun(); return; }
+  if ((b = e.target.closest('[data-lrpick]'))) {
+    e.preventDefault();
+    var k = b.getAttribute('data-lrpick');
+    LR.pick = LR.pick === k ? '' : k;
+    lrRender();
+    return;
+  }
+  if ((b = e.target.closest('[data-lrmore]'))) { e.preventDefault(); LR.more[b.getAttribute('data-lrmore')] = true; lrRender(); return; }
+  if ((b = e.target.closest('[data-lroff]'))) { var o = b.getAttribute('data-lroff'); LR.off[o] = !LR.off[o]; lrRender(); return; }
+  if (e.target.closest('[data-lrpickpages]')) { cvPickPages(); return; }
+  if (e.target.closest('[data-lrappfloor]')) { e.preventDefault(); LR.floor = null; loadLiRun(); return; }
+});
+document.getElementById('lr-body').addEventListener('change', function (e) {
+  var fl = e.target.closest('[data-lrfloor]');
+  if (!fl) return;
+  LR.floor = Math.max(0, Math.min(100, Math.round(Number(fl.value)) || 0));
+  loadLiRun();
 });
 
 // --- the Brands table -------------------------------------------
@@ -28057,6 +28286,7 @@ function gotoViewNow(id) {
   if (id === 'results') loadResults();
   if (id === 'discover') loadDiscover();
   if (id === 'clarify') loadClarify();
+  if (id === 'lirun') loadLiRun();
   if (id === 'materials') showView('materials');
   if (id === 'team') loadTeam();
   if (id === 'chats') loadChats();
@@ -28141,6 +28371,12 @@ function gotoViewNow(id) {
   setTimeout(function () { loadClarify(); }, 50);
 })();
 
+// Deep link: #lirun — Brands → LinkedIn run.
+(function () {
+  if (!/^#lirun/.test(location.hash || '')) return;
+  setTimeout(function () { loadLiRun(); }, 50);
+})();
+
 // Deep link: #stock — Brands → Stock take.
 (function () {
   if (!/^#stock/.test(location.hash || '')) return;
@@ -28206,7 +28442,7 @@ document.getElementById('cat-cards').addEventListener('click', function (e) {
 
 // Anything carrying data-brand opens the brand page. One rule covering
 // brand lists, search results, pipeline rows and the CRM.
-['brands-list', 'supply-card', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
+['brands-list', 'supply-card', 'lr-body', 'search-results', 'deals', 'partners', 'targets', 'needs-list', 'li-list', 'li-zach', 'li-sched', 'reached-list', 'nextbest', 'passed-list', 'action-panel', 'req-list', 'bd-activity', 'st-lanes', 'st-others', 'hm-accepted'].forEach(function (id) {
   document.getElementById(id).addEventListener('click', function (e) {
     var el = e.target.closest('[data-brand]');
     if (!el) return;
