@@ -1480,9 +1480,13 @@ one API: `POST /api/data` with `{ fn, args }` dispatched from the `handlers` map
   every category on Top in his Category priority, read from the Setting on each call, so `lanes` follows him when he
   changes one — on that day electrolytes, energy, beverage, rtd, spirits, alcohol, nicotine; it was Stock take's seven
   priority lanes, which still had clothing and athletic (Low since Oct 7), so most finds came back C or D, and never
-  searched Soda / water or Alcohol (other); a row filed anywhere else is refused "not one of the Top categories";
-  the routine's prompt says to hunt the lanes the GET returns), a website or source link (LinkedIn
-  page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
+  searched Soda / water or Alcohol (other); a row filed anywhere else is refused "not one of the Top categories".
+  **To the session that hunts:** search the `lanes` the GET returns, not the seven named in your first run — and
+  put the facts in `reason` (300 characters at most: sales or money raised with the year, store count and the
+  retailers by name, college / music deals, what students use it for, launches), because the grade reads only
+  `reason`. The routine's stored prompt still says "the priority lanes"; it can be changed only from the hunt's own
+  chat, so this paragraph, which that prompt has it re-read each morning, is where the change lives), a website or
+  source link (LinkedIn page optional), at least one sign — `sponsors` college/music, `genz` 18–24, `midsize` growing —
   never a known brand, **never a giant** (Leo, Oct 6 2026: `src/lib/giants.ts` — household names, brands of the big parents in parents.ts, $1B+ sales via the row's `salesUsd`; GET sends the list as `reject`; the LinkedIn lookalikes skip them too, plus 1M+ followers — roster brands are untouched), **50 a rolling day**. A failed save answers 500 with the database's reason. Rows land on Brands → Discover under "Claude hunt · <date>"
   (sign tags + Source ↗) for Leo to Add / Dismiss; it never makes a Brand itself.
   **Brands → Discover** (Leo, Oct 2026: "more simple and clean"; `loadDiscover`/`dcRender`, `DC` in
